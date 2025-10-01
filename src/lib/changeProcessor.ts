@@ -31,10 +31,10 @@ async function sendChangeToOptomateAPI(): Promise<void> {
     const batches = chunk(result, BATCH_SIZE);
     const successIds: number[] = [];
     const processedSummaries: ProcessedSummary[] = [];
-    
+
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         const batch = batches[batchIndex];
-        
+
         // 배치 내부의 change log들을 병렬 처리
         const batchPromises = batch.map(async (changeLog) => {
             try {
@@ -58,7 +58,7 @@ async function sendChangeToOptomateAPI(): Promise<void> {
                 }
             }
         });
-        
+
         // 마지막 배치가 아니면 배치 간 1초 대기
         if (batchIndex < batches.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -69,7 +69,7 @@ async function sendChangeToOptomateAPI(): Promise<void> {
         const placeholders = successIds.map(() => "?").join(',');
         db.prepare(`DELETE FROM CHANGE_LOG WHERE id IN (${placeholders})`).run(...successIds);
     }
-    
+
     // 모든 처리가 끝난 후 요약 출력
     if (processedSummaries.length > 0) {
         console.log("\n" + "=".repeat(80));
@@ -84,8 +84,8 @@ async function sendChangeToOptomateAPI(): Promise<void> {
 
 // processOptomData 함수 추가
 async function processOptomData(
-    optomData: optomData, 
-    db: Database.Database, 
+    optomData: optomData,
+    db: Database.Database,
     OptomateApiUrl: string,
     key: string
 ): Promise<{isLocum: boolean, emailData?: PostEmailData | null, isFirst?: boolean, workHistory?: string, optomId?: number, summary?: ProcessedSummary, workFirst?:boolean}> {
@@ -135,7 +135,7 @@ async function processOptomData(
             ADJUST_FINISH: formatHm(optomData.endTime.split("T")[1]),
             INACTIVE: key !== "new"
         }
-        
+
         // 로스터를 옵토메이트에 보내기
         const response = await fetch(`${OptomateApiUrl}/Optometrist(${id})/AppAdjust`, {
             method: "POST",
@@ -184,7 +184,7 @@ async function processOptomData(
                 };
             }
         }
-        
+
         // 요약 정보 생성
         const summary: ProcessedSummary = {
             name: `${optomData.firstName} ${optomData.lastName}`,
@@ -193,7 +193,7 @@ async function processOptomData(
             start: APP_ADJUST.ADJUST_START,
             end: APP_ADJUST.ADJUST_FINISH
         };
-        
+
         return {
             isLocum: optomData.isLocum === 1,
             emailData,
@@ -237,10 +237,10 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old: optomDat
     // 순차 처리: 하나의 요청이 완전히 완료된 후 1초 대기하고 다음 요청 진행
     const summaries: ProcessedSummary[] = [];
     const locumResults: {emailData?: PostEmailData | null, isFirst?: boolean, optomId?: number, workHistory?: string}[] = [];
-    
+
     for (let i = 0; i < dataToProcess.length; i++) {
         const {data, key} = dataToProcess[i];
-        
+
         try {
             const result = await processOptomData(data, db, OptomateApiUrl, key);
             if (result.summary) {
@@ -254,7 +254,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old: optomDat
                     });
                 }
             }
-            
+
             // 마지막 요청이 아니면 1초 대기
             if (i < dataToProcess.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -277,10 +277,10 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old: optomDat
                 }
             }
         });
-        
+
         await Promise.allSettled(emailPromises);
     }
-    
+
     return summaries;
 }
 

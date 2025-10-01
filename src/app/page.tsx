@@ -14,20 +14,20 @@ import {OptomMap} from "@/data/stores";
 function getCurrentWeekRange(): DateRange {
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0(일요일) ~ 6(토요일)
-  
+
   // 일요일까지의 일수 계산 (일요일이면 0, 월요일이면 -1, ..., 토요일이면 -6)
   const daysToSunday = -dayOfWeek;
-  
+
   // 이번 주 일요일
   const sunday = new Date(today);
   sunday.setDate(today.getDate() + daysToSunday);
   sunday.setHours(0, 0, 0, 0);
-  
+
   // 이번 주 토요일
   const saturday = new Date(sunday);
   saturday.setDate(sunday.getDate() + 6);
   saturday.setHours(23, 59, 59, 999);
-  
+
   return {
     from: sunday,
     to: saturday,
@@ -46,10 +46,10 @@ export default function Home() {
         console.log("=== Loading Roster Data ===");
         console.log(`Selected week: ${selectedWeek?.from} to ${selectedWeek?.to}`);
         console.log(`Selected location: ${selectOption}`);
-        
+
         setLoading(true);
         setError(null);
-        
+
         getList(selectedWeek?.from, selectedWeek?.to, selectOption)
             .then(res => {
                 if(res){
@@ -77,7 +77,7 @@ export default function Home() {
       <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
         <div className="w-full flex justify-between items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-800">Roster</h1>
-          
+
           <div className="flex justify-end gap-3">
             <IooISelect
                 selectItem={selectOption}
@@ -99,7 +99,7 @@ export default function Home() {
                     console.log("=== Manual Refresh Triggered ===");
                     setLoading(true);
                     setError(null);
-                    
+
                     try {
                         await refresh(selectedWeek?.from, selectedWeek?.to, selectOption);
                         console.log("Manual refresh completed successfully");
@@ -120,7 +120,7 @@ export default function Home() {
             >
                 <RiRefreshLine />
             </button>
-            
+
             {/* Optom Count 페이지로 이동 */}
             <a
               href="/roster/optom-count"
@@ -130,7 +130,7 @@ export default function Home() {
             </a>
           </div>
         </div>
-        
+
         {error && (
             <div className="w-full p-4 bg-red-50 border border-red-200 rounded-md">
                 <div className="flex">
@@ -148,7 +148,7 @@ export default function Home() {
                 </div>
             </div>
         )}
-        
+
         <Table data={res} loading={loading} />
       </div>
     </div>

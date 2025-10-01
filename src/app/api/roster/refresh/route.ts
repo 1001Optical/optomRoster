@@ -80,7 +80,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
 
         const fromDateObj = new Date(normalizedFromDate);
         const toDateObj = new Date(normalizedToDate);
-        
+
         if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
             console.error("Invalid date format provided");
             return NextResponse.json(

@@ -6,7 +6,7 @@ const identifierCountCache = new Map<string, number>();
 
 export const checkIdentifierCount = async (givenName: string, surname: string) => {
     const cacheKey = `${givenName}_${surname}`;
-    
+
     if (identifierCountCache.has(cacheKey)) {
         console.log(`Using cached identifier count for ${givenName} ${surname}`);
         return identifierCountCache.get(cacheKey);

@@ -6,11 +6,11 @@ const secret = process.env.EMPLOYMENTHERO_SECRET
 export const getEmployeeInfo = async (id: number, retryCount = 0): Promise<any> => {
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000 * (retryCount + 1); // Exponential backoff: 1s, 2s, 3s
-    
+
     if (retryCount === 0) {
         console.log(`  🔍 [EMPLOYEE INFO] Fetching info for employee ID: ${id}`);
     }
-    
+
     try {
         if (!id || id <= 0) {
             throw new Error(`Invalid employee ID: ${id}`);

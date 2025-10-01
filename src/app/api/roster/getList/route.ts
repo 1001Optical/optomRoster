@@ -5,7 +5,7 @@ import {getDB} from "@/utils/db/db";
 export async function GET(request: Request): Promise<NextResponse<I1001Response<I1001RosterData[]>>>  {
     try {
         const db = getDB();
-        
+
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
         const fromDate = searchParams.get("from");
@@ -38,7 +38,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         // 날짜 형식 검증
         const fromDateObj = new Date(fromDateOnly);
         const toDateObj = new Date(toDateOnly);
-        
+
         if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
             console.error("Invalid date format provided");
             return NextResponse.json(

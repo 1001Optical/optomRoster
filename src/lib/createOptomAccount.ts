@@ -19,14 +19,14 @@ const removeSpecialChars = (str: string): string => {
 export const createOptomAccount = async (firstName: string, lastName: string, email: string) => {
     console.log(`=== Creating Optomate Account ===`);
     console.log(`FirstName: ${firstName}, LastName: ${lastName}, Email: ${email}`);
-    
+
     try {
         // 특수문자 제거
         const givenName = removeSpecialChars(firstName);
         const surname = removeSpecialChars(lastName);
-        
+
         console.log(`Cleaned name - Given: ${givenName}, Surname: ${surname}`);
-        
+
         // 특수문자 제거 후 빈 문자열 체크
         if (!givenName || !surname) {
             throw new Error(`Invalid name format after removing special characters: ${firstName} ${lastName}`);
