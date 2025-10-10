@@ -20,7 +20,6 @@ export default function Home() {
       from: new Date(2025, 8, 14),
       to: new Date(2025, 8, 20, 23, 59, 59),
     })
-    const [isOpen, setIsOpen] = useState(false)
 
     useEffect(() => {
         console.log("=== Loading Roster Data ===");
@@ -52,17 +51,11 @@ export default function Home() {
             });
     }, [selectOption, selectedWeek]);
 
-  // const getListinWeek = (range?: DateRange) => {
-  //     getList(range?.from, range?.to).then(res => {
-  //         setRes(res)
-  //     })
-  // }
 
   return (
     <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center">
       <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
         <div className="w-full flex justify-end gap-3">
-            {/*<div onClick={() => setIsOpen(!isOpen)}>Reisger</div>*/}
             {rangeType === "weekly" ? (
                 <IooICalendar
                     selectedWeek={selectedWeek}

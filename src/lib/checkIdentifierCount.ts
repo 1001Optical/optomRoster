@@ -2,7 +2,16 @@ import {createSecret} from "@/utils/crypto";
 
 const createIdentifier = (g: string, s: string) => g[0]+s[0]
 
+const identifierCountCache = new Map<string, number>();
+
 export const checkIdentifierCount = async (givenName: string, surname: string) => {
+    const cacheKey = `${givenName}_${surname}`;
+    
+    if (identifierCountCache.has(cacheKey)) {
+        console.log(`Using cached identifier count for ${givenName} ${surname}`);
+        return identifierCountCache.get(cacheKey);
+    }
+
     console.log(`=== Checking Identifier Count ===`);
     console.log(`Given name: ${givenName}, Surname: ${surname}`);
     
@@ -37,6 +46,7 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
         const count = result?.value?.length ?? 0;
         
         console.log(`Found ${count} existing identifiers starting with '${identifier}'`);
+        identifierCountCache.set(cacheKey, count);
         return count;
     } catch (error) {
         console.error(`Error checking identifier count for ${givenName} ${surname}:`, error);

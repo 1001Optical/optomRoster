@@ -5,15 +5,11 @@ import {getEmploymentHeroList} from "@/lib/getEmploymentHeroList";
 
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<optomData[]>>>  {
-    console.log("=== Roster Refresh API Called ===");
-    
     try {
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
         const fromDate = searchParams.get("from");
         const toDate = searchParams.get("to");
-
-        console.log(`Request parameters - from: ${fromDate}, to: ${toDate}`);
 
         if(!fromDate || !toDate) {
             console.error("Missing required parameters: from and to dates");
@@ -39,9 +35,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        console.log(`Fetching employment hero list from ${fromDate} to ${toDate}`);
         const result = await getEmploymentHeroList(fromDate, toDate);
-        console.log(`Successfully fetched ${result.length} roster entries`);
 
         return NextResponse.json(
             {

@@ -62,12 +62,14 @@ export interface ChangeLogWithDiff extends Omit<ChangeLog, 'diffSummary'> {
 export interface optomData {
     id: number;
     employeeId: number;
-    employeeName: string;
+    firstName: string;
+    lastName: string;
     locationId: number;
     locationName: string;
     startTime: string;
     endTime: string;
     isLocum: number;
+    email: string;
     breaks?: {
         id: number;
         startTime: string;

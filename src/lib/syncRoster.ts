@@ -1,45 +1,40 @@
 import {optomData} from "@/types/types";
-import {Database} from "sqlite";
+import Database from "better-sqlite3";
 
-export async function syncRoster(db: Database, incoming: optomData[], scope: { start: string, end: string }) {
-    console.log(`=== Starting Roster Sync ===`);
-    console.log(`Scope: ${scope.start} to ${scope.end}`);
-    console.log(`Incoming data: ${incoming.length} items`);
-    
+export async function syncRoster(db: Database.Database, incoming: optomData[], scope: { start: string, end: string }) {
     if (!Array.isArray(incoming)) {
         console.error("incoming is not an array:", incoming);
         throw new Error("incoming data must be an array");
     }
     
     if (incoming.length === 0) {
-        console.log("No incoming data to sync");
         return;
     }
     
-    await db.exec('BEGIN');
-    console.log("Database transaction started");
+    db.exec('BEGIN');
     
     try {
         // 1) UPSERT: 신규 → INSERT, 기존 → UPDATE
-        console.log("Preparing UPSERT statements...");
-        const upsert = await db.prepare(`
+        const upsert = db.prepare(`
       INSERT INTO ROSTER (
-        id, employeeId, employeeName, locationId, locationName, startTime, endTime, isLocum
+        id, employeeId, firstName, lastName, locationId, locationName, startTime, endTime, email, isLocum
       )
       VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
       ON CONFLICT(id) DO UPDATE SET
         employeeId   = excluded.employeeId,
-        employeeName = excluded.employeeName,
+        firstName    = excluded.firstName,
+        lastName     = excluded.lastName,
         locationId   = excluded.locationId,
         locationName = excluded.locationName,
         startTime    = excluded.startTime,
         endTime      = excluded.endTime,
+        email        = excluded.email,
         isLocum      = excluded.isLocum
     `);
 
-        const upsertBreak = await db.prepare(`
+        const upsertBreak = db.prepare(`
       INSERT INTO ROSTER_BREAK (id, rosterId, startTime, endTime, isPaidBreak)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
@@ -48,91 +43,77 @@ export async function syncRoster(db: Database, incoming: optomData[], scope: { s
         endTime = excluded.endTime,
         isPaidBreak = excluded.isPaidBreak
     `);
-
+        
+        const rosterData = [];
+        const breakData = [];
         const incomingIds: number[] = [];
-        let upsertCount = 0;
-        let breakCount = 0;
 
-        console.log("Processing incoming roster data...");
         for (const v of incoming) {
             try {
                 // 데이터 검증
-                if (!v.id) {
-                    console.warn(`Skipping item with missing ID:`, v);
-                    continue;
-                }
+                if (!v.id) continue;
 
                 // UPSERT
-                const upsertData = [
+                rosterData.push([
                     v.id ?? null,
                     v.employeeId ?? null,
-                    v.employeeName ?? null,
+                    v.firstName ?? null,
+                    v.lastName ?? null,
                     v.locationId ?? null,
                     v.locationName ?? null,
                     v.startTime ?? null,
                     v.endTime ?? null,
+                    v.email ?? null,
                     v.isLocum ? 1 : 0,
-                ];
-                
-                const result = await upsert.run(...upsertData);
-                upsertCount++;
-                
-                if (result.changes > 0) {
-                    console.log(`Upserted roster item: ${v.employeeName} (ID: ${v.id})`);
-                }
+                ]);
 
                 if (v.id != null) {
                     incomingIds.push(v.id);
+                }
+                // Breaks 처리 (UPSERT)
+                if (v.breaks?.length) {
+                    for (const br of v.breaks) {
+                        breakData.push([br.id, v.id, br.startTime, br.endTime, br.isPaidBreak]);
+                    }
                 }
             } catch (error) {
                 console.error("Error during upsert for item:", v, "Error:", error);
                 throw error;
             }
-
-            // Breaks 처리 (UPSERT)
-            if (v.breaks?.length) {
-                console.log(`Processing ${v.breaks.length} breaks for roster ID ${v.id}`);
-                for (const br of v.breaks) {
-                    try {
-                        await upsertBreak.run(br.id, v.id, br.startTime, br.endTime, br.isPaidBreak);
-                        breakCount++;
-                    } catch (breakError) {
-                        console.error(`Error upserting break ${br.id} for roster ${v.id}:`, breakError);
-                        throw breakError;
-                    }
-                }
-            }
         }
 
-        console.log(`Upserted ${upsertCount} roster items and ${breakCount} breaks`);
+        // 3. 배치 실행 (트랜잭션 내에서)
+        const transaction = db.transaction((rosterBatch, breakBatch) => {
+            // 로스터 데이터 배치 실행
+            for (const data of rosterBatch) {
+                upsert.run(...data);
+            }
+            
+            // 브레이크 데이터 배치 실행
+            for (const data of breakBatch) {
+                upsertBreak.run(...data);
+            }
+        });
+
+        transaction(rosterData, breakData);
 
         // 2) DELETE: 받은 데이터에 없는 id는 삭제 (날짜 범위 내에서만)
         const validIncomingIds = incomingIds.filter(id => id != null);
-        console.log(`Valid incoming IDs: ${validIncomingIds.length}`);
         
         if (validIncomingIds.length > 0) {
             const placeholders = validIncomingIds.map(() => '?').join(',');
-            const deleteResult = await db.run(
-                `
+            db.prepare(`
         DELETE FROM ROSTER
          WHERE startTime >= ?
            AND startTime <= ?
            AND id NOT IN (${placeholders})
-        `,
-                scope.start,
-                scope.end,
-                ...validIncomingIds
-            );
-            console.log(`Deleted ${deleteResult.changes} outdated roster items`);
+        `).run(scope.start, scope.end, ...validIncomingIds);
         }
 
-        await db.exec('COMMIT');
-        console.log("Database transaction committed successfully");
-        console.log(`=== Roster Sync Completed ===`);
+        db.exec('COMMIT');
     } catch (e) {
         console.error("Error during roster sync, rolling back transaction:", e);
-        await db.exec('ROLLBACK');
-        console.log("Database transaction rolled back");
+        db.exec('ROLLBACK');
         throw e;
     }
 }

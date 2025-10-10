@@ -3,19 +3,14 @@ import {I1001Response, I1001RosterData} from "@/types/api_response";
 import {getDB} from "@/utils/db/db";
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<I1001RosterData[]>>>  {
-    console.log("=== Roster GetList API Called ===");
-    
     try {
-        const db = await getDB();
-        console.log("Database connection established");
+        const db = getDB();
         
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
         const fromDate = searchParams.get("from");
         const toDate = searchParams.get("to");
         const locationId = searchParams.get("locationId");
-
-        console.log(`Request parameters - from: ${fromDate}, to: ${toDate}, locationId: ${locationId}`);
 
         if(!fromDate || !toDate) {
             console.error("Missing required parameters: from and to dates");
@@ -41,40 +36,36 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        console.log("Executing database query...");
-        const result = await db.all(
-            `SELECT
-                 id,
-                 employeeId,
-                 employeeName,
-                 locationId,
-                 locationName,
-                 startTime,
-                 endTime,
-
-                 -- 파생값
-                 date(startTime)                                      AS day,   -- 'YYYY-MM-DD'
-                 CAST(strftime('%w', startTime) AS INTEGER)           AS dow,   -- 0=Sun..6=Sat
-                 substr(startTime, 12, 5)                             AS hhmmStart, -- 'HH:MM'
-                 substr(endTime,   12, 5)                             AS hhmmEnd
+        const result: unknown[] = db.prepare(
+            `SELECT id,
+                    employeeId,
+                    firstName,
+                    lastName,
+                    locationId,
+                    locationName,
+                    startTime,
+                    endTime,
+                    email,
+                    -- 파생값
+                    date(startTime)                            AS day,       -- 'YYYY-MM-DD'
+                    CAST(strftime('%w', startTime) AS INTEGER) AS dow,       -- 0=Sun..6=Sat
+                    substr(startTime, 12, 5)                   AS hhmmStart, -- 'HH:MM'
+                    substr(endTime, 12, 5)                     AS hhmmEnd
 
              FROM ROSTER
-             WHERE startTime >= $from            -- 예: '2025-09-14T00:00:00'
-               AND endTime <  $to
+             WHERE startTime >= $from -- 예: '2025-09-14T00:00:00'
+               AND endTime < $to
                AND ($locationId IS NULL OR locationId = $locationId)
-           `,
-            {
-                $from: `${fromDate}T00:00:00Z`,
-                $to: `${toDate}T23:59:59Z`,
-                $locationId: locationId,
-            }
-        );
-
-        console.log(`Query executed successfully, found ${result.length} records`);
+            `
+        ).all({
+            from: `${fromDate}T00:00:00Z`,
+            to: `${toDate}T23:59:59Z`,
+            locationId: locationId,
+        });
 
         return NextResponse.json({
             message: 'Success',
-            data: result
+            data: result as I1001RosterData[]
         });
     } catch (error) {
         console.error("Error in roster getList API:", error);

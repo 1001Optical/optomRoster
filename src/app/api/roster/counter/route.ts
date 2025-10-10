@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import {I1001Response, I1001RosterData} from "@/types/api_response";
-import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
+import { I1001Response } from "@/types/api_response";
+import { checkIdentifierCount } from "@/lib/checkIdentifierCount";
 
-export async function GET(): Promise<NextResponse<I1001Response<I1001RosterData[]>>>  {
-    console.log("=== Roster Counter API Called ===");
-    
+interface ICounter {
+    count: number
+}
+
+export async function GET(): Promise<NextResponse<I1001Response<ICounter>>>  {
     try {
-        console.log("Checking identifier count for 'Junhee Cho'...");
         const result = await checkIdentifierCount("Junhee", "Cho");
-        console.log(`Identifier count result: ${result}`);
 
         return NextResponse.json(
             {
@@ -20,7 +20,6 @@ export async function GET(): Promise<NextResponse<I1001Response<I1001RosterData[
             }
         );
     } catch (error) {
-        console.error("Error in roster counter API:", error);
         return NextResponse.json(
             {
                 message: "Internal server error",

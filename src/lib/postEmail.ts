@@ -1,16 +1,18 @@
-interface WebhookRequestBody {
+export interface PostEmailData {
     email: string
     "lastName": string
     "storeName": string
     "rosterDate": string
     "rosterStart": string
     "rosterEnd": string
-    "storeTemplate": string
+    "storeTemplet": string
     "optomateId"?: string
     "optomatePw"?: string
 }
 
-export const postEmail = async (data: WebhookRequestBody, isFirst: boolean) => {
+export const postEmail = async (data: PostEmailData | undefined, isFirst: boolean) => {
+    if(!data) return;
+    
     console.log(`=== Sending Email ===`);
     console.log(`Email: ${data.email}, isFirst: ${isFirst}`);
     console.log(`Store: ${data.storeName}, Date: ${data.rosterDate}`);

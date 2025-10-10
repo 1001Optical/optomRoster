@@ -13,13 +13,26 @@ CREATE TABLE IF NOT EXISTS CHANGE_LOG (
     -- FOREIGN KEY(rosterId) REFERENCES ROSTER(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS employee_cache (
+                                              employee_id INTEGER PRIMARY KEY,
+                                              data TEXT NOT NULL,
+                                              updated_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_change_log_window
     ON CHANGE_LOG (windowStart, windowEnd, whenDetected);
 
 CREATE INDEX IF NOT EXISTS idx_change_log_roster
     ON CHANGE_LOG (rosterId);
 
+CREATE INDEX IF NOT EXISTS idx_change_log_type ON CHANGE_LOG (changeType);
+CREATE INDEX IF NOT EXISTS idx_change_log_detected ON CHANGE_LOG (whenDetected);
+
 -- Down
 DROP TABLE IF EXISTS CHANGE_LOG;
 DROP INDEX IF EXISTS idx_change_log_window;
 DROP INDEX IF EXISTS idx_change_log_roster;
+DROP TABLE IF EXISTS employee_cache;
+
+DROP INDEX IF EXISTS idx_change_log_type;
+DROP INDEX IF EXISTS idx_change_log_detected;

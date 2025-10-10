@@ -14,7 +14,7 @@ export function formatting(rows: I1001RosterData[]) {
         }
         const dow = new Date(r.startTime).getDay(); // 또는 DB에서 같이 가져오기
         roster[loc][dow].push({
-            name: r.employeeName.split(" ")[0],
+            name: r.firstName,
             start: getMinNHour(r.startTime.slice(11,16)),
             end:   getMinNHour(r.endTime.slice(11,16)),
         });

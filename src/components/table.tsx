@@ -1,13 +1,15 @@
 import {I1001TableType} from "@/types/api_response";
 import {StoreMap} from "@/data/stores";
 import {cn} from "@/lib/utils";
+import React from "react";
 
 interface TableProps {
   data?: I1001TableType;
   loading?: boolean;
 }
 
-const Table = ({ data = {}, loading }: TableProps) => {
+// eslint-disable-next-line react/display-name
+const Table = React.memo(({ data = {}, loading }: TableProps) => {
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
@@ -83,6 +85,6 @@ const Table = ({ data = {}, loading }: TableProps) => {
       </table>
     </div>
   );
-};
+});
 
 export default Table;

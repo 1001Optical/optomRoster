@@ -1,14 +1,22 @@
 import {apiFetch} from "@/services/apiFetch";
 
-type SearchOptomIdType = (fullName: string) => Promise<number | undefined>;
+type SearchOptomIdType = (firstName: string, lastName: string) => Promise<number | undefined>;
 
-export const searchOptomId: SearchOptomIdType = async (fullName) => {
+const optomCache = new Map<string, number>();
+
+export const searchOptomId: SearchOptomIdType = async (firstName, lastName) => {
+    const cacheKey = `${firstName}_${lastName}`;
     console.log(`=== Searching Optomate ID ===`);
-    console.log(`Full name: ${fullName}`);
+    console.log(`Full name: ${firstName} ${lastName}`);
+
+    if (optomCache.has(cacheKey)) {
+        console.log(`Using cached optom ID for ${firstName} ${lastName}`);
+        return optomCache.get(cacheKey);
+    }
     
     try {
-        if (!fullName || fullName.trim().length === 0) {
-            throw new Error("Full name is required");
+        if (!firstName || !lastName) {
+            throw new Error("Name is required");
         }
 
         const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -19,22 +27,27 @@ export const searchOptomId: SearchOptomIdType = async (fullName) => {
         const url = `${apiUrl}/api/optometrists/search`;
         console.log(`Fetching optometrists from: ${url}`);
 
-        const response = await apiFetch(url, {
+        const result = await apiFetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                firstName: fullName.split(" ")[0],
-                lastName: fullName.split(" ")[1]
+                firstName: firstName,
+                lastName: lastName
             })
         });
-        if(response.success){
-            const {data} = response
+        if(result.success){
+            const {data} = result
+
+            if (data?.optomId) {
+                optomCache.set(cacheKey, data.optomId);
+            }
+
             return data ? data.optomId : undefined;
         }
     } catch (error) {
-        console.error(`Error searching for optometrist ID for ${fullName}:`, error);
+        console.error(`Error searching for optometrist ID for ${firstName} ${lastName}:`, error);
         throw error;
     }
 }
