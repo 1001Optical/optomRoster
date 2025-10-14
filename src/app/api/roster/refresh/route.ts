@@ -3,7 +3,7 @@ import {I1001Response} from "@/types/api_response";
 import {optomData} from "@/types/types";
 import {getEmploymentHeroList} from "@/lib/getEmploymentHeroList";
 import {toLocalIsoNoOffset} from "@/utils/time";
-import {startOfDay, endOfDay, endOfMonth, addMonths} from "date-fns";
+import {startOfDay, endOfDay, endOfMonth, addMonths, addWeeks, endOfWeek} from "date-fns";
 
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<optomData[]>>>  {
@@ -15,17 +15,28 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const range = searchParams.get("range");
 
         if(range){
+            const todayDate = new Date();
             switch(range){
                 case "today":
-                    const todayDate = new Date();
                     fromDate = toLocalIsoNoOffset(startOfDay(todayDate));
                     toDate = toLocalIsoNoOffset(endOfDay(todayDate));
                     break;
-                case "monthly":
-                    const currentDate = new Date();
-                    fromDate = toLocalIsoNoOffset(startOfDay(currentDate));
-                    toDate = toLocalIsoNoOffset(endOfMonth(addMonths(currentDate, 1)));
+                case "weekly":
+                    fromDate = toLocalIsoNoOffset(startOfDay(todayDate));
+                    toDate = toLocalIsoNoOffset(endOfWeek(addWeeks(todayDate, 1)));
                     break;
+                case "monthly":
+                    fromDate = toLocalIsoNoOffset(startOfDay(todayDate));
+                    toDate = toLocalIsoNoOffset(endOfMonth(addMonths(todayDate, 1)));
+                    break;
+                default:
+                    console.error("[Error] Invalid range format. Supported values are: today, weekly, monthly");
+                    return NextResponse.json(
+                        {
+                            message: "Invalid range format. Supported values are: today, weekly, monthly",
+                        },
+                        { status: 400 }
+                    );
             }
         }else{
             if(!fromDate || !toDate){
