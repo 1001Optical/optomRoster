@@ -11,7 +11,7 @@ const refresh = async (start?: Date, end?: Date) => {
         
         console.log(`Fetching roster data from ${fromDate} to ${toDate}`);
         
-        const response = await fetch(`/api/roster/refresh?from=${fromDate}&to=${toDate}`, {
+        const response = await fetch(`/roster/api/roster/refresh?from=${fromDate}&to=${toDate}`, {
             method: "GET",
         });
         
@@ -44,7 +44,7 @@ const refreshManual = async () => {
         
         console.log(`Fetching manual roster data from ${fromDate} to ${toDate}`);
         
-        const response = await fetch(`/api/roster/refresh?from=${fromDate}&to=${toDate}`, {
+        const response = await fetch(`/roster/api/roster/refresh?from=${fromDate}&to=${toDate}`, {
             method: "GET",
         });
         
@@ -72,8 +72,9 @@ const getList = async (start?: Date, end?: Date, locationId?: number) => {
         const locationParam = locationId ? `&locationId=${locationId}` : "";
         
         console.log(`Fetching roster list from ${fromDate} to ${toDate}${locationParam}`);
-        
-        const res = await fetch(`/api/roster/getList?from=${fromDate}&to=${toDate}${locationParam}`, {
+
+        // const product = process.env.NODE_ENV === 'production' ? "roster" : "";
+        const res = await fetch(`/roster/api/roster/getList?from=${fromDate}&to=${toDate}${locationParam}`, {
             method: "GET",
         });
         
