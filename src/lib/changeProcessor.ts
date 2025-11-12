@@ -3,7 +3,7 @@ import {ChangeLog, optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
 import {searchOptomId} from "@/lib/optometrists";
 import {postEmail, PostEmailData} from "@/lib/postEmail";
-import {StoreMap} from "@/data/stores";
+import {OptomMap} from "@/data/stores";
 import {createOptomAccount} from "@/lib/createOptomAccount";
 import {chunk} from "@/lib/utils";
 import {createSecret} from "@/utils/crypto";
@@ -95,7 +95,7 @@ async function processOptomData(
             throw new Error("Invalid startTime format");
         }
 
-        const branchInfo = StoreMap.find(v => v.LocationId === optomData.locationId);
+        const branchInfo = OptomMap.find(v => v.LocationId === optomData.locationId);
         if (!branchInfo) {
             console.error(`Branch not found for locationId: ${optomData.locationId}`);
             throw new Error(`Unknown locationId: ${optomData.locationId}`);

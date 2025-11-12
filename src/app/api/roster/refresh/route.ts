@@ -13,6 +13,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         let fromDate = searchParams.get("from") ?? "";
         let toDate = searchParams.get("to") ?? "";
         const range = searchParams.get("range");
+        const branch = searchParams.get("branch");
 
         if(range){
             const todayDate = new Date();
@@ -64,7 +65,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        const result = await getEmploymentHeroList(fromDate, toDate);
+        const result = await getEmploymentHeroList(fromDate, toDate, branch);
 
         return NextResponse.json(
             {

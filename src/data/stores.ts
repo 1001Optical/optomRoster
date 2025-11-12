@@ -1,4 +1,4 @@
-export const StoreMap =[{
+export const OptomMap =[{
     LocationId:313216,
     StoreName:"Eastgardens",
     State: "NSW",
@@ -94,4 +94,23 @@ export const StoreMap =[{
         State: "NSW",
         OptCode:"CHW",
     },
+]
+
+export const RetailMap = [
+    { "id": 313201, "name": "Blacktown", OptCode:"BKT"},
+    { "id": 313203, "name": "Bondi Junction", OptCode:"BON"},
+    { "id": 313205, "name": "Burwood", OptCode:"BUR"},
+    { "id": 313207, "name": "Hornsby", OptCode:"HOB"},
+    { "id": 313209, "name": "Melbourne Emporium", OptCode:"EMP"},
+    { "id": 313211, "name": "Parramatta", OptCode:"PA1"},
+    { "id": 313213, "name": "Penrith", OptCode:"PEN"},
+    { "id": 313217, "name": "Eastgardens", OptCode:"ETG"},
+    { "id": 313226, "name": "Hurstville", OptCode:"HUR"},
+    { "id": 315738, "name": "Indooroopilly", OptCode:"IND"},
+    { "id": 315739, "name": "Macquarie", OptCode:"MQU"},
+    { "id": 315740, "name": "Doncaster", OptCode:"DON"},
+    { "id": 315742, "name": "Box Hill", OptCode:"BOH"},
+    { "id": 315762, "name": "Top Ryde", OptCode:"TOP"},
+    { "id": 315769, "name": "Chatswood Chase", OptCode:"CHC"},
+    { "id": 315770, "name": "Chatswood Westfield", OptCode:"CHW",},
 ]

@@ -1,5 +1,5 @@
 import {I1001TableType} from "@/types/api_response";
-import {StoreMap} from "@/data/stores";
+import {OptomMap} from "@/data/stores";
 import {cn} from "@/lib/utils";
 import React from "react";
 
@@ -52,7 +52,7 @@ const Table = React.memo(({ data = {}, loading }: TableProps) => {
                     key={key}
                     className="py-2 px-3 border-b border-gray-200 text-center w-[90px] h-[52px]"
                 >
-                  {StoreMap.find(v => v.LocationId === Number(key))?.StoreName}
+                  {OptomMap.find(v => v.LocationId === Number(key))?.StoreName}
                 </td>
                 {daysOfWeek.map((_, dayIndex) => (
                     <td

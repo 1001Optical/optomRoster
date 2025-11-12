@@ -59,3 +59,16 @@ export function formatHm(hm: string) {
     const d = parse(hm, 'HH:mm:ss', new Date());
     return format(d, 'hh:mm a');
 }
+
+export function getTimezoneOffsetISO(date: string | Date): string {
+    // getTimezoneOffset()은 "UTC - 로컬"을 분 단위로 줍니다.
+    // 예: 시드니(UTC+10)는 -600 이 나옴
+    const offsetMinutes = -new Date(date).getTimezoneOffset(); // 부호 뒤집기
+
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const abs = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(abs / 60)).padStart(2, "0");
+    const minutes = String(abs % 60).padStart(2, "0");
+
+    return `${sign}${hours}:${minutes}`;
+}

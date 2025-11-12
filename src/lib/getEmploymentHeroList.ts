@@ -3,12 +3,12 @@ import {createSecret} from "@/utils/crypto";
 import {optomData} from "@/types/types";
 import {Shift} from "@/types/employment_hero_response";
 import {syncRoster} from "@/lib/syncRoster";
-import {StoreMap} from "@/data/stores";
+import {OptomMap} from "@/data/stores";
 import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
 import {sendChangeToOptomateAPI} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
 
-export const getEmploymentHeroList: (fromDate: string, toDate: string) => Promise<optomData[]> = async (fromDate, toDate) => {
+export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null) => Promise<optomData[]> = async (fromDate, toDate, branch) => {
     try {
         const db = getDB();
 
@@ -19,7 +19,10 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string) => Promis
             throw new Error("Missing required environment variables: EMPLOYMENTHERO_SECRET or EMPLOYMENTHERO_API_URL");
         }
 
-        const selectedLocations = StoreMap.map(v => `filter.selectedLocations=${v.LocationId}`).join("&")
+        let selectedLocations = OptomMap.map(v => `filter.selectedLocations=${v.LocationId}`).join("&")
+        if(branch) {
+            selectedLocations = `filter.selectedLocations=${OptomMap.find(v => v.OptCode === branch)?.LocationId}`
+        }
 
         const api = `${server_url}/rostershift?filter.fromDate=${fromDate}&filter.toDate=${toDate}${selectedLocations ? `&${selectedLocations}` : ""}`
         const response = await fetch(

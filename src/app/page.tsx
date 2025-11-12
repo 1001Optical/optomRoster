@@ -8,7 +8,7 @@ import IooICalendar from "@/components/IooICalendar";
 import { DateRange } from "react-day-picker";
 import { RiRefreshLine } from "react-icons/ri";
 import IooISelect from "@/components/IooISelect";
-import {StoreMap} from "@/data/stores";
+import {OptomMap} from "@/data/stores";
 
 export default function Home() {
     const [res, setRes] = useState<I1001TableType>({})
@@ -65,7 +65,7 @@ export default function Home() {
             ) : <div>
                 <IooISelect
                     selectItem={selectOption}
-                    items={StoreMap.map(v => {
+                    items={OptomMap.map(v => {
                         return {key: v.LocationId, value: v.StoreName}
                     })}
                     onSelect={(key) => {
