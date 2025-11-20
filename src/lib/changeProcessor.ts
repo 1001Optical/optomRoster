@@ -1,13 +1,13 @@
 import {getDB} from "@/utils/db/db";
 import {ChangeLog, optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
-import {searchOptomId} from "@/lib/optometrists";
+import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
 import {postEmail, PostEmailData} from "@/lib/postEmail";
 import {OptomMap} from "@/data/stores";
 import {createOptomAccount} from "@/lib/createOptomAccount";
 import {chunk} from "@/lib/utils";
 import {createSecret} from "@/utils/crypto";
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 
 // ---- 외부 API 전송 함수 ----
 async function sendChangeToOptomateAPI(): Promise<void> {
@@ -56,16 +56,18 @@ async function processOptomData(
     db: Database.Database, 
     OptomateApiUrl: string,
     key: string
-): Promise<{isLocum: boolean, emailData?: PostEmailData | null, isFirst?: boolean}> {
+): Promise<{isLocum: boolean, emailData?: PostEmailData | null, isFirst?: boolean, workHistory?: string, optomId?: number}> {
     try {
         let isFirst = false;
         let username = undefined;
-        let id = await searchOptomId(optomData.firstName, optomData.lastName);
+        const optomInfo = await searchOptomId(optomData.firstName, optomData.lastName);
+
+        let id = optomInfo?.id;
 
         const email = optomData.email;
 
         // 검색 후 아이디가 없을 시 생성로직
-        if(!id) {
+        if(!optomInfo) {
             try {
                 const info = await createOptomAccount(`${optomData.firstName} ${optomData.lastName}`, email);
                 id = info.id;
@@ -153,18 +155,22 @@ async function processOptomData(
         // 이메일 데이터 준비 (Locum인 경우만)
         let emailData = null;
         if(optomData.isLocum){
-            console.log(`Preparing email for locum: ${email} for ${optomData.firstName} ${optomData.lastName}`);
-            emailData = {
-                email,
-                lastName: optomData.lastName || optomData.firstName,
-                storeName: branchInfo.StoreName,
-                rosterDate: date,
-                rosterStart: APP_ADJUST.ADJUST_START,
-                rosterEnd: APP_ADJUST.ADJUST_FINISH,
-                storeTemplet: template?.info ?? "",
-                optomateId: username,
-                optomatePw: username ? '1001' : undefined,
-            };
+            const workFirst = !optomInfo || !optomInfo.workHistory || !optomInfo.workHistory.find(v => v === APP_ADJUST.BRANCH_IDENTIFIER)
+
+            if(workFirst) {
+                console.log(`Preparing email for locum: ${email} for ${optomData.firstName} ${optomData.lastName}`);
+                emailData = {
+                    email,
+                    lastName: optomData.lastName || optomData.firstName,
+                    storeName: branchInfo.StoreName,
+                    rosterDate: date,
+                    rosterStart: APP_ADJUST.ADJUST_START,
+                    rosterEnd: APP_ADJUST.ADJUST_FINISH,
+                    storeTemplet: template?.info ?? "",
+                    optomateId: username,
+                    optomatePw: username ? '1001' : undefined,
+                };
+            }
         } else {
             console.log(`Employee ${optomData.firstName} ${optomData.lastName} is not a locum, skipping email`);
         }
@@ -174,7 +180,9 @@ async function processOptomData(
         return {
             isLocum: optomData.isLocum === 1,
             emailData,
-            isFirst
+            isFirst,
+            workHistory: APP_ADJUST.BRANCH_IDENTIFIER,
+            optomId: id
         };
     } catch (error) {
         console.error(`Error processing ${optomData.firstName} ${optomData.lastName}:`, error);
@@ -220,16 +228,17 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old: optomDat
 
     // 이메일 전송 (Locum만)
     const locumResults = results
-        .filter((result): result is PromiseFulfilledResult<{ isLocum: boolean; emailData?: PostEmailData; isFirst?: boolean } | null> =>
+        .filter((result): result is PromiseFulfilledResult<{ isLocum: boolean; emailData?: PostEmailData; isFirst?: boolean, id: number, workHistory?: string } | null> =>
             result.status === 'fulfilled' && !!result.value && !!result.value.isLocum
         )
         .map(result => result.value!);
 
     if (locumResults.length > 0) {
         console.log(`Sending ${locumResults.length} locum emails`);
-        const emailPromises = locumResults.map(result => 
+        const emailPromises = locumResults.map(result => {
             postEmail(result.emailData, result.isFirst ?? false)
-        );
+            if(result.id && result.workHistory) addWorkHistory(result.id, result.workHistory )
+        });
         
         await Promise.allSettled(emailPromises);
         console.log(`All locum emails sent successfully`);
@@ -238,46 +247,8 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old: optomDat
     console.log(`=== Completed processing change log ${changeLog.id} ===`);
 }
 
-// ---- 통계 조회 함수 ----
-function getChangeLogStats(): {
-    total: number;
-    byType?: { [key: string]: number };
-} {
-    try {
-        console.log("Fetching change log statistics...");
-        
-        const db = getDB();
-        const total = db.prepare(`SELECT COUNT(*) as count FROM CHANGE_LOG`).get() as { count: number };
-        
-        // 타입별 통계도 추가
-        const byType = db.prepare(`
-            SELECT changeType, COUNT(*) as count 
-            FROM CHANGE_LOG 
-            GROUP BY changeType
-        `).all() as { changeType: string; count: number }[];
-        
-        const typeStats = byType.reduce((acc, row) => {
-            acc[row.changeType] = row.count;
-            return acc;
-        }, {} as { [key: string]: number });
-        
-        console.log(`Change log stats - Total: ${total.count}, By type:`, typeStats);
-        
-        return {
-            total: total.count,
-            byType: typeStats
-        };
-    } catch (error) {
-        console.error("Error fetching change log statistics:", error);
-        return {
-            total: 0
-        };
-    }
-}
-
 // ---- Export ----
 export {
     sendChangeToOptomateAPI,
     callOptomateAPI,
-    getChangeLogStats
 };

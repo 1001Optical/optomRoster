@@ -1,8 +1,10 @@
 import {apiFetch} from "@/services/apiFetch";
 
-type SearchOptomIdType = (firstName: string, lastName: string) => Promise<number | undefined>;
+interface IResult { id: number, workHistory: string[] }
 
-const optomCache = new Map<string, number>();
+type SearchOptomIdType = (firstName: string, lastName: string) => Promise<IResult | undefined>;
+
+const optomCache = new Map<string, IResult>();
 
 export const searchOptomId: SearchOptomIdType = async (firstName, lastName) => {
     const cacheKey = `${firstName}_${lastName}`;
@@ -24,6 +26,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName) => {
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
         }
 
+        // search에 값 넣어 달라고 해야됨
         const url = `${apiUrl}/api/optometrists/search`;
         console.log(`Fetching optometrists from: ${url}`);
 
@@ -41,13 +44,50 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName) => {
             const {data} = result
 
             if (data?.optomId) {
-                optomCache.set(cacheKey, data.optomId);
+                optomCache.set(cacheKey, {id: data.optomId, workHistory: data.workHistory});
             }
 
-            return data ? data.optomId : undefined;
+            return data ? {id: data.optomId, workHistory: data.workHistory} : undefined;
         }
     } catch (error) {
         console.error(`Error searching for optometrist ID for ${firstName} ${lastName}:`, error);
+        throw error;
+    }
+}
+
+type AddWorkHistory = (id: number, branch: string) => Promise<IResult | undefined>;
+
+export const addWorkHistory: AddWorkHistory = async (id, branch) => {
+    console.log(`=== Post Work History ===`);
+    console.log(`ID: `);
+
+    try {
+        if (!id || !branch) {
+            throw new Error("id, branch is required");
+        }
+
+        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        if (!apiUrl) {
+            throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
+        }
+
+        // search에 값 넣어 달라고 해야됨
+        const url = `${apiUrl}/api/optometrists/optomWorkHistory`;
+        console.log(`Fetching optometrists from: ${url}`);
+
+        const result = await apiFetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                optomId: id,
+                workHistory: branch
+            })
+        });
+        return result.success
+    } catch (error) {
+        console.error(`ERROR AddWorkHistory:`, error);
         throw error;
     }
 }

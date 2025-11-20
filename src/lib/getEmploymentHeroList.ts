@@ -24,7 +24,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
             selectedLocations = `filter.selectedLocations=${OptomMap.find(v => v.OptCode === branch)?.LocationId}`
         }
 
-        const api = `${server_url}/rostershift?filter.fromDate=${fromDate}&filter.toDate=${toDate}${selectedLocations ? `&${selectedLocations}` : ""}`
+        const api = `${server_url}/rostershift?filter.ShiftStatuses=published&filter.fromDate=${fromDate}&filter.toDate=${toDate}${selectedLocations ? `&${selectedLocations}` : ""}`
         const response = await fetch(
             api,
             {

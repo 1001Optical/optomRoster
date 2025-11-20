@@ -10,16 +10,37 @@ import { RiRefreshLine } from "react-icons/ri";
 import IooISelect from "@/components/IooISelect";
 import {OptomMap} from "@/data/stores";
 
+// 오늘 기준으로 이번 주의 일요일부터 토요일까지의 날짜 범위를 계산하는 함수
+function getCurrentWeekRange(): DateRange {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0(일요일) ~ 6(토요일)
+  
+  // 일요일까지의 일수 계산 (일요일이면 0, 월요일이면 -1, ..., 토요일이면 -6)
+  const daysToSunday = -dayOfWeek;
+  
+  // 이번 주 일요일
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() + daysToSunday);
+  sunday.setHours(0, 0, 0, 0);
+  
+  // 이번 주 토요일
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+  saturday.setHours(23, 59, 59, 999);
+  
+  return {
+    from: sunday,
+    to: saturday,
+  };
+}
+
 export default function Home() {
     const [res, setRes] = useState<I1001TableType>({})
     const [selectOption, setSelectOption] = useState<number | undefined>()
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [rangeType] = useState<"weekly" | "monthly">("weekly")
-    const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>({
-      from: new Date(2025, 8, 14),
-      to: new Date(2025, 8, 20, 23, 59, 59),
-    })
+    const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>(getCurrentWeekRange())
 
     useEffect(() => {
         console.log("=== Loading Roster Data ===");
