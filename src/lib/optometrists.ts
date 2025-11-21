@@ -82,7 +82,7 @@ export const addWorkHistory: AddWorkHistory = async (id, branch) => {
             },
             body: JSON.stringify({
                 optomId: id,
-                workHistory: branch
+                workedHistory: branch
             })
         });
         return result.success

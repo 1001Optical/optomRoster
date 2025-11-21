@@ -22,9 +22,22 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
+        // 날짜 파라미터에서 날짜 부분만 추출 (YYYY-MM-DD 형식으로 정규화)
+        const extractDateOnly = (dateStr: string): string => {
+            // ISO 형식 (2024-12-06T23:59:59Z) 또는 날짜만 (2024-12-06) 모두 처리
+            const dateMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (!dateMatch) {
+                throw new Error(`Invalid date format: ${dateStr}`);
+            }
+            return dateMatch[1];
+        };
+
+        const fromDateOnly = extractDateOnly(fromDate);
+        const toDateOnly = extractDateOnly(toDate);
+
         // 날짜 형식 검증
-        const fromDateObj = new Date(fromDate);
-        const toDateObj = new Date(toDate);
+        const fromDateObj = new Date(fromDateOnly);
+        const toDateObj = new Date(toDateOnly);
         
         if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
             console.error("Invalid date format provided");
@@ -35,6 +48,12 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                 { status: 400 }
             );
         }
+
+        // 토요일까지 포함하기 위해 다음 날 00:00:00을 사용 (exclusive end)
+        // 시간대 변환 없이 날짜 문자열을 직접 조작하여 다음 날 계산
+        const [year, month, day] = toDateOnly.split('-').map(Number);
+        const toDateNextDayObj = new Date(Date.UTC(year, month - 1, day + 1));
+        const toDateNextDayStr = toDateNextDayObj.toISOString().split('T')[0];
 
         const result: unknown[] = db.prepare(
             `SELECT id,
@@ -53,13 +72,13 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                     substr(endTime, 12, 5)                     AS hhmmEnd
 
              FROM ROSTER
-             WHERE startTime >= $from -- 예: '2025-09-14T00:00:00'
-               AND endTime < $to
+             WHERE startTime >= $from -- 예: '2025-09-14T00:00:00Z'
+               AND endTime < $to     -- 다음 날 00:00:00Z (토요일 23:59:59까지 포함)
                AND ($locationId IS NULL OR locationId = $locationId)
             `
         ).all({
-            from: `${fromDate}T00:00:00Z`,
-            to: `${toDate}T23:59:59Z`,
+            from: `${fromDateOnly}T00:00:00Z`,
+            to: `${toDateNextDayStr}T00:00:00Z`,  // 다음 날 00:00:00Z로 설정하여 토요일 전체 포함
             locationId: locationId,
         });
 

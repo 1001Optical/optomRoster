@@ -1,4 +1,4 @@
-import {toLocalIsoNoOffset} from "@/utils/time";
+import {toLocalIsoNoOffset, toDateOnly} from "@/utils/time";
 import {formatting} from "@/utils/formatting";
 
 const refresh = async (start?: Date, end?: Date) => {
@@ -6,8 +6,9 @@ const refresh = async (start?: Date, end?: Date) => {
     console.log(`Start: ${start}, End: ${end}`);
     
     try {
-        const fromDate = toLocalIsoNoOffset(start ?? new Date("2025-09-01T00:00:00Z"));
-        const toDate = toLocalIsoNoOffset(end ?? new Date("2025-09-16T23:59:59Z"));
+        // 날짜만 추출하여 전송 (백엔드에서 정규화하지만, 프론트엔드에서도 명확하게)
+        const fromDate = toDateOnly(start ?? new Date("2025-09-01T00:00:00Z"));
+        const toDate = toDateOnly(end ?? new Date("2025-09-16T23:59:59Z"));
         
         console.log(`Fetching roster data from ${fromDate} to ${toDate}`);
         
@@ -39,8 +40,8 @@ const refreshManual = async () => {
         
         console.log(`Manual refresh period: ${thisMonth.toISOString()} to ${nextMonth.toISOString()}`);
 
-        const fromDate = toLocalIsoNoOffset(thisMonth);
-        const toDate = toLocalIsoNoOffset(nextMonth);
+        const fromDate = toDateOnly(thisMonth);
+        const toDate = toDateOnly(nextMonth);
         
         console.log(`Fetching manual roster data from ${fromDate} to ${toDate}`);
         
@@ -67,8 +68,9 @@ const getList = async (start?: Date, end?: Date, locationId?: number) => {
     console.log(`Start: ${start}, End: ${end}, LocationId: ${locationId}`);
     
     try {
-        const fromDate = toLocalIsoNoOffset(start ?? new Date("2025-09-01T00:00:00Z"));
-        const toDate = toLocalIsoNoOffset(end ?? new Date("2025-09-16T23:59:59Z"));
+        // 날짜만 추출하여 전송 (백엔드에서 정규화하지만, 프론트엔드에서도 명확하게)
+        const fromDate = toDateOnly(start ?? new Date("2025-09-01T00:00:00Z"));
+        const toDate = toDateOnly(end ?? new Date("2025-09-16T23:59:59Z"));
         const locationParam = locationId ? `&locationId=${locationId}` : "";
         
         console.log(`Fetching roster list from ${fromDate} to ${toDate}${locationParam}`);

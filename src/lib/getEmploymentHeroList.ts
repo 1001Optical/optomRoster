@@ -57,13 +57,20 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         // 성능 최적화: 고유한 직원 ID만 먼저 추출하여 병렬 처리
         const uniqueEmployeeIds = [...new Set(result.map((shift: Shift) => shift.employeeId).filter(Boolean))];
-        console.log(`Found ${uniqueEmployeeIds.length} unique employees out of ${result.length} shifts`);
+        console.log(`\n📊 [EMPLOYMENT HERO] Processing roster data`);
+        console.log(`   └─ Total shifts: ${result.length}`);
+        console.log(`   └─ Unique employees: ${uniqueEmployeeIds.length}`);
+        console.log(`   └─ Date range: ${fromDate} to ${toDate}`);
 
         // 직원 정보를 배치로 병렬 처리
-        const BATCH_SIZE = 20; // 동시에 5명씩 처리
+        const BATCH_SIZE = 20; // 동시에 20명씩 처리
         const batches = chunk(uniqueEmployeeIds, BATCH_SIZE);
         
-        for (const batch of batches) {
+        console.log(`   └─ Processing in ${batches.length} batch(es) of ${BATCH_SIZE} employees\n`);
+        
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            console.log(`📦 [EMPLOYMENT HERO] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} employees)`);
             const batchPromises = batch.map(async (employeeId) => {
                 try {
                     // 메모리 캐시 확인
@@ -118,11 +125,15 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                 }
             });
 
-            // 배치 간 짧은 지연 (API 서버 부하 방지)
-            if (batches.length > 1) {
-                await new Promise(resolve => setTimeout(resolve, 100));
+            // 배치 간 지연 (API 서버 부하 방지, Rate Limiting 방지)
+            // 429 에러를 줄이기 위해 배치 간 지연 증가
+            if (batches.length > 1 && batchIndex < batches.length - 1) {
+                console.log(`   ⏳ Waiting 500ms before next batch...\n`);
+                await new Promise(resolve => setTimeout(resolve, 500)); // 100ms -> 500ms로 증가
             }
         }
+        
+        console.log(`✅ [EMPLOYMENT HERO] All employee info processed\n`);
 
         // 이제 모든 직원 정보가 준비되었으므로 변환 처리 (동일한 로직 유지)
         const convertedData: (optomData | undefined)[] | [] = Array.isArray(result) ? result.map((shift: Shift, index: number): optomData | undefined => {
@@ -141,8 +152,23 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                     lastName = name.last;
                     email = name.email;
                 } else {
-                    console.warn(`No cached info for employee ${shift.employeeId}`);
-                    return undefined;
+                    // 캐시에 없거나 API 호출 실패 시 shift.employeeName에서 파싱 시도
+                    console.warn(`  ⚠️  [EMPLOYMENT HERO] No cached info for employee ${shift.employeeId}, attempting to parse from employeeName`);
+                    if (shift.employeeName) {
+                        const nameParts = shift.employeeName.trim().split(/\s+/);
+                        if (nameParts.length >= 2) {
+                            firstName = nameParts[0];
+                            lastName = nameParts.slice(1).join(' ');
+                            email = ""; // 이메일은 없음
+                            console.log(`     └─ Parsed name: ${firstName} ${lastName}`);
+                        } else {
+                            console.error(`     └─ ❌ Cannot parse employee name: ${shift.employeeName}`);
+                            return undefined;
+                        }
+                    } else {
+                        console.error(`     └─ ❌ No employee name available`);
+                        return undefined;
+                    }
                 }
 
                 const [firstname, type] = firstName.split("_");
@@ -173,11 +199,16 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         const filterData: optomData[] = convertedData.filter((v): v is optomData => v !== undefined)
         
+        console.log(`\n📊 [EMPLOYMENT HERO] Data conversion summary`);
+        console.log(`   └─ Total shifts: ${result.length}`);
+        console.log(`   └─ Converted: ${filterData.length}`);
+        console.log(`   └─ Failed: ${result.length - filterData.length}\n`);
+        
         await syncRoster(db, filterData, {start: fromDate, end: toDate});
         
         await sendChangeToOptomateAPI();
 
-        return returnData;
+        return filterData; // 실제 필터링된 데이터 반환
     } catch (error) {
         console.error("Error in getEmploymentHeroList:", error);
         throw error;

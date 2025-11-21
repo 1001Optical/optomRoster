@@ -10,6 +10,17 @@ export function toLocalIsoNoOffset(d: Date) {
     return `${yyyy}-${mm}-${dd}T${HH}:${MM}:${SS}Z`;
 }
 
+/**
+ * Date 객체를 YYYY-MM-DD 형식의 날짜 문자열로 변환
+ * API 호출 시 날짜만 필요한 경우 사용
+ */
+export function toDateOnly(d: Date): string {
+    const yyyy = d.getFullYear();
+    const mm = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 export function getDateNTime(date: string)  {
     const tmp = date.split('T')
     return {

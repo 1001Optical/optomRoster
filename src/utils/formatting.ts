@@ -12,7 +12,9 @@ export function formatting(rows: I1001RosterData[]) {
         if (!roster[loc]) {
             roster[loc] = Array.from({ length: 7 }, () => []);
         }
-        const dow = new Date(r.startTime).getDay(); // 또는 DB에서 같이 가져오기
+        // DB에서 이미 계산된 dow 사용 (시간대 변환 문제 방지)
+        // dow는 0=Sun, 1=Mon, ..., 6=Sat
+        const dow = r.dow ?? new Date(r.startTime).getDay(); // fallback to Date calculation if dow not available
         roster[loc][dow].push({
             name: r.firstName,
             start: getMinNHour(r.startTime.slice(11,16)),

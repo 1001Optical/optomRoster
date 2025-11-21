@@ -51,9 +51,35 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             }
         }
 
-        // 날짜 형식 검증
-        const fromDateObj = new Date(fromDate);
-        const toDateObj = new Date(toDate);
+        // 날짜 파라미터에서 날짜 부분만 추출 (YYYY-MM-DD 형식으로 정규화)
+        const extractDateOnly = (dateStr: string): string => {
+            // ISO 형식 (2024-12-06T23:59:59Z) 또는 날짜만 (2024-12-06) 모두 처리
+            const dateMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (!dateMatch) {
+                throw new Error(`Invalid date format: ${dateStr}`);
+            }
+            return dateMatch[1];
+        };
+
+        // 날짜 형식 검증 및 정규화
+        let normalizedFromDate: string;
+        let normalizedToDate: string;
+
+        try {
+            normalizedFromDate = extractDateOnly(fromDate);
+            normalizedToDate = extractDateOnly(toDate);
+        } catch (error) {
+            console.error("Invalid date format provided:", error);
+            return NextResponse.json(
+                {
+                    message: "Invalid date format provided",
+                },
+                { status: 400 }
+            );
+        }
+
+        const fromDateObj = new Date(normalizedFromDate);
+        const toDateObj = new Date(normalizedToDate);
         
         if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
             console.error("Invalid date format provided");
@@ -65,7 +91,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        const result = await getEmploymentHeroList(fromDate, toDate, branch);
+        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch);
 
         return NextResponse.json(
             {

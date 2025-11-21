@@ -13,9 +13,10 @@ export interface PostEmailData {
 export const postEmail = async (data: PostEmailData | undefined, isFirst: boolean) => {
     if(!data) return;
     
-    console.log(`=== Sending Email ===`);
-    console.log(`Email: ${data.email}, isFirst: ${isFirst}`);
-    console.log(`Store: ${data.storeName}, Date: ${data.rosterDate}`);
+    console.log(`  📧 [EMAIL] Sending ${isFirst ? 'first-time' : 'existing'} user email`);
+    console.log(`     └─ To: ${data.email}`);
+    console.log(`     └─ Store: ${data.storeName}`);
+    console.log(`     └─ Date: ${data.rosterDate}`);
     
     try {
         // 데이터 검증
@@ -33,7 +34,8 @@ export const postEmail = async (data: PostEmailData | undefined, isFirst: boolea
             throw new Error(`Missing webhook URL for ${isFirst ? 'first' : 'existing'} user`);
         }
 
-        console.log(`Sending to webhook: ${webhookUrl}`);
+        console.log(`     └─ Webhook URL: ${webhookUrl}`);
+        console.log(`     └─ Request Body:`, JSON.stringify(data, null, 2));
 
         const response = await fetch(webhookUrl, {
             method: "POST",
@@ -43,14 +45,28 @@ export const postEmail = async (data: PostEmailData | undefined, isFirst: boolea
             body: JSON.stringify(data),
         });
 
+        console.log(`     └─ Response Status: ${response.status} ${response.statusText}`);
+
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`     └─ Error Response:`, errorText);
             throw new Error(`Email webhook request failed: ${response.status} ${response.statusText}`);
         }
 
-        console.log(`Email sent successfully to ${data.email}`);
+        const responseText = await response.text();
+        if (responseText) {
+            try {
+                const responseJson = JSON.parse(responseText);
+                console.log(`     └─ Response Body:`, JSON.stringify(responseJson, null, 2));
+            } catch {
+                console.log(`     └─ Response Body:`, responseText);
+            }
+        }
+
+        console.log(`  ✅ [EMAIL] Email sent successfully to ${data.email}\n`);
         return response;
     } catch (error) {
-        console.error(`Error sending email to ${data.email}:`, error);
+        console.error(`  ❌ [EMAIL] Error sending email to ${data.email}:`, error);
         throw error;
     }
 }
