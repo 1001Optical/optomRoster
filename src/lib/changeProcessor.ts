@@ -5,7 +5,7 @@ import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
 import {postEmail, PostEmailData} from "@/lib/postEmail";
 import {OptomMap} from "@/data/stores";
 import {createOptomAccount} from "@/lib/createOptomAccount";
-import {chunk} from "@/lib/utils";
+// import {chunk} from "@/lib/utils";
 import {createSecret} from "@/utils/crypto";
 import type Database from "better-sqlite3";
 
@@ -25,8 +25,8 @@ async function sendChangeToOptomateAPI(): Promise<void> {
 
     console.log(`📊 [CHANGE PROCESSOR] Found ${result.length} change log(s) to process`);
 
-    const BATCH_SIZE = 10;
-    const batches = chunk(result, BATCH_SIZE)
+    // const BATCH_SIZE = 10;
+    // const batches = chunk(result, BATCH_SIZE)
 
     // 모든 change log를 순차 처리 (배치 개념 제거)
     const successIds: number[] = [];
@@ -329,7 +329,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old: optomDat
     // 이메일 전송 (Locum만)
     const locumResults = results
         .filter((result): result is PromiseFulfilledResult<{ isLocum: boolean; emailData?: PostEmailData; isFirst?: boolean, optomId?: number, workHistory?: string } | null> =>
-            result.status === 'fulfilled' && !!result.value && !!result.value.isLocum
+            result.status === 'fulfilled' && !!result.value && result.value.isLocum
         )
         .map(result => result.value!);
 

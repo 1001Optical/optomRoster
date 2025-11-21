@@ -2,6 +2,7 @@ import {createSecret} from "@/utils/crypto";
 
 const secret = process.env.EMPLOYMENTHERO_SECRET
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getEmployeeInfo = async (id: number, retryCount = 0): Promise<any> => {
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000 * (retryCount + 1); // Exponential backoff: 1s, 2s, 3s
