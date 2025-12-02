@@ -62,7 +62,8 @@ export async function GET(
     }
 
     // 오늘 이후 날짜 필터링 (과거 날짜만 동기화)
-    const today = new Date().toISOString().split('T')[0];
+    // 로컬 시간 기준으로 오늘 날짜 계산 (yesterday와 동일한 기준 사용)
+    const today = toDateOnly(new Date());
     const pastDates = dates.filter(d => d < today);
 
     if (pastDates.length === 0) {
