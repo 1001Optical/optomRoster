@@ -2,6 +2,7 @@ import { createSecret } from "@/utils/crypto";
 import { OptomMap } from "@/data/stores";
 import { fromZonedTime } from "date-fns-tz";
 import { getDB } from "@/utils/db/db";
+import { toDateOnly } from "@/utils/time";
 
 /**
  * 브랜치별 timezone 반환
@@ -298,12 +299,13 @@ export async function syncAppointmentCounts(
   date: string,
   concurrency: number = 3
 ): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  // 로컬 시간 기준으로 오늘 날짜 계산 (getAppointmentCount와 동일한 기준 사용)
+  const today = toDateOnly(new Date());
   const isPastDate = date < today;
   
   if (!isPastDate) {
     console.log(
-      `[APPOINTMENT COUNT SYNC] Skipping ${date} - not a past date`
+      `[APPOINTMENT COUNT SYNC] Skipping ${date} - not a past date (today: ${today})`
     );
     return;
   }
