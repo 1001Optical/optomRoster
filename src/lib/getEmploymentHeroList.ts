@@ -63,7 +63,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         console.log(`   └─ Date range: ${fromDate} to ${toDate}`);
 
         // 직원 정보를 배치로 병렬 처리
-        const BATCH_SIZE = 20; // 동시에 20명씩 처리
+        const BATCH_SIZE = 5; // 동시에 5명씩 처리
         const batches = chunk(uniqueEmployeeIds, BATCH_SIZE);
 
         console.log(`   └─ Processing in ${batches.length} batch(es) of ${BATCH_SIZE} employees\n`);

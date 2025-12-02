@@ -83,3 +83,63 @@ export function getTimezoneOffsetISO(date: string | Date): string {
 
     return `${sign}${hours}:${minutes}`;
 }
+
+/**
+ * 2025-11-30(일요일)을 기준으로 주차 계산
+ * @param date YYYY-MM-DD 형식의 날짜 문자열 또는 Date 객체
+ * @returns 주차 번호 (1부터 시작)
+ */
+export function getWeekNumber(date: string | Date): number {
+    const baseDate = new Date('2025-11-30T00:00:00Z'); // 기준일 (1주차 일요일)
+    const targetDate = typeof date === 'string' ? new Date(date + 'T00:00:00Z') : date;
+    
+    // 날짜 차이 계산 (밀리초)
+    const diffMs = targetDate.getTime() - baseDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    // 주차 계산 (일요일 기준)
+    const weekNumber = Math.floor(diffDays / 7) + 1;
+    
+    return Math.max(1, weekNumber); // 최소 1주차
+}
+
+/**
+ * 주차 번호로 해당 주의 일요일~토요일 날짜 범위 반환
+ * @param weekNumber 주차 번호 (1부터 시작)
+ * @returns {start: string, end: string} YYYY-MM-DD 형식
+ */
+export function getWeekRange(weekNumber: number): { start: string; end: string } {
+    const baseDate = new Date('2025-11-30T00:00:00Z'); // 기준일 (1주차 일요일)
+    const daysToAdd = (weekNumber - 1) * 7;
+    
+    const sunday = new Date(baseDate);
+    sunday.setUTCDate(baseDate.getUTCDate() + daysToAdd);
+    
+    const saturday = new Date(sunday);
+    saturday.setUTCDate(sunday.getUTCDate() + 6);
+    
+    return {
+        start: toDateOnly(sunday),
+        end: toDateOnly(saturday),
+    };
+}
+
+/**
+ * 날짜 범위 내의 모든 날짜 배열 반환
+ * @param start YYYY-MM-DD 형식의 시작일
+ * @param end YYYY-MM-DD 형식의 종료일
+ * @returns 날짜 문자열 배열
+ */
+export function getDateRange(start: string, end: string): string[] {
+    const startDate = new Date(start + 'T00:00:00Z');
+    const endDate = new Date(end + 'T00:00:00Z');
+    const dates: string[] = [];
+    
+    const current = new Date(startDate);
+    while (current <= endDate) {
+        dates.push(toDateOnly(current));
+        current.setUTCDate(current.getUTCDate() + 1);
+    }
+    
+    return dates;
+}

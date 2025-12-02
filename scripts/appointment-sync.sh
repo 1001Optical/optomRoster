@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# 매일 새벽에 실행하여 전날까지의 예약 개수를 동기화
+# Cron: 0 3 * * * (매일 새벽 3시)
+# 또는: 0 0 * * * (매일 자정)
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+# API URL
+api_url=${API_URL:-"http://localhost:3000"}
+
+# 어제 날짜 동기화
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting appointment count sync for yesterday..."
+curl -s "$api_url/roster/api/appointments/sync?yesterday=true" > /dev/null
+
+if [ $? -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Appointment count sync completed successfully"
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Appointment count sync failed"
+    exit 1
+fi
+
+

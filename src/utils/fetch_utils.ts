@@ -145,5 +145,46 @@ const getOptomCount = async (date: string): Promise<OptomCountResult[]> => {
     }
 }
 
-export {refresh, getList, refreshManual, getOptomCount}
+const getOptomCountByRange = async (from: string, to: string, weekly: boolean = false): Promise<OptomCountResult[] | { data: OptomCountResult[]; dates: string[] }> => {
+    console.log("=== Getting Optom Count by Range ===");
+    console.log(`From: ${from}, To: ${to}, Weekly: ${weekly}`);
+    
+    try {
+        // 날짜 형식 검증
+        const fromMatch = from.match(/^(\d{4}-\d{2}-\d{2})/);
+        const toMatch = to.match(/^(\d{4}-\d{2}-\d{2})/);
+        
+        if (!fromMatch || !toMatch) {
+            throw new Error(`Invalid date format. Expected: YYYY-MM-DD`);
+        }
+        
+        const fromDate = fromMatch[1];
+        const toDate = toMatch[1];
+        
+        console.log(`Fetching optom count for range: ${fromDate} to ${toDate}`);
+        
+        const weeklyParam = weekly ? "&weekly=true" : "";
+        const res = await fetch(`/roster/api/roster/optom-count?from=${fromDate}&to=${toDate}${weeklyParam}`, {
+            method: "GET",
+        });
+        
+        if (!res.ok) {
+            throw new Error(`Optom count request failed: ${res.status} ${res.statusText}`);
+        }
+        
+        const result = await res.json();
+        console.log(`Optom count retrieved, processing ${result.data?.length || 0} stores`);
+        
+        if (weekly && result.dates) {
+            return { data: result.data || [], dates: result.dates };
+        }
+        
+        return result.data || [];
+    } catch (err) {
+        console.error("Error getting optom count by range:", err);
+        throw err;
+    }
+}
+
+export {refresh, getList, refreshManual, getOptomCount, getOptomCountByRange}
 export type {OptomCountResult}

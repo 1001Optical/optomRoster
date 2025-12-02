@@ -72,7 +72,7 @@ export const createOptomAccount = async (firstName: string, lastName: string, em
                 "USERNAME": `${username}${u}`,
                 "PASSWORD": "1001",
                 "EMAIL_ADDRESS": email,
-                "IS_ADMINISTRATOR": true,
+                "IS_ADMINISTRATOR": false,
                 "USE_APPBOOK": true,
                 "IS_ROAMING_USER": true
             };

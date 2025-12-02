@@ -1,6 +1,7 @@
 import { createSecret } from "@/utils/crypto";
 import { OptomMap } from "@/data/stores";
 import { fromZonedTime } from "date-fns-tz";
+import { getDB } from "@/utils/db/db";
 
 /**
  * 브랜치별 timezone 반환
@@ -58,14 +59,85 @@ function getBranchDateRange(start: string, end: string, branch: string) {
 
 /**
  * 실제 예약(눈검사) 개수를 가져오는 함수
+ * - 과거 날짜: DB에서 조회 (배치 작업으로 미리 저장된 데이터)
+ * - 오늘/미래 날짜: 0 반환 (아직 누적되지 않았으므로)
  * @param branch OptCode (예: "BKT", "BON")
  * @param date YYYY-MM-DD 형식의 날짜
+ * @param forceRefresh 강제 갱신 여부 (배치 작업에서 사용, 기본값: false)
  * @returns 예약 개수
  */
 export async function getAppointmentCount(
   branch: string,
-  date: string
+  date: string,
+  forceRefresh: boolean = false
 ): Promise<number> {
+  const db = getDB();
+  
+  // DB 테이블 생성 (한 번만)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS appointment_count_cache (
+      branch TEXT NOT NULL,
+      date TEXT NOT NULL,
+      count INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (branch, date)
+    )
+  `);
+
+  // 오늘 날짜 확인 (YYYY-MM-DD 형식)
+  // 로컬 시간 기준으로 오늘 날짜 계산 (UTC가 아닌)
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const isPastDate = date < today;
+  const isToday = date === today;
+  
+  console.log(
+    `[APPOINTMENT COUNT] Date check: ${date}, today: ${today}, isPastDate: ${isPastDate}, isToday: ${isToday}`
+  );
+  
+  // 오늘 또는 미래 날짜는 무조건 0 반환 (아직 누적되지 않았으므로)
+  if (!isPastDate) {
+    console.log(
+      `[APPOINTMENT COUNT] Date ${date} is today or future, returning 0 (not accumulated yet)`
+    );
+    return 0;
+  }
+
+  // 과거 날짜만 DB에서 조회 (배치 작업으로 미리 저장된 데이터)
+  if (!forceRefresh) {
+    const cached = db.prepare(`
+      SELECT count FROM appointment_count_cache 
+      WHERE branch = ? AND date = ?
+    `).get(branch, date) as { count: number } | undefined;
+
+    if (cached) {
+      console.log(
+        `[APPOINTMENT COUNT] Using stored data for past date - branch ${branch} on ${date}: ${cached.count}`
+      );
+      return cached.count;
+    }
+    
+    // DB에 없으면 0 반환 (아직 배치 작업이 실행되지 않았거나 데이터가 없는 경우)
+    console.log(
+      `[APPOINTMENT COUNT] No stored data for past date - branch ${branch} on ${date}, returning 0`
+    );
+    return 0;
+  }
+  
+  // 과거 날짜인데 DB에 없으면 0 반환 (아직 배치 작업이 실행되지 않았거나 데이터가 없는 경우)
+  if (!forceRefresh) {
+    console.log(
+      `[APPOINTMENT COUNT] No stored data for past date - branch ${branch} on ${date}, returning 0`
+    );
+    return 0;
+  }
+
+  // forceRefresh가 true인 경우에만 API 호출 (배치 작업에서 사용)
+  // 과거 날짜만 API 호출 가능
+  if (!forceRefresh || !isPastDate) {
+    return 0;
+  }
+
   const optomateApiUrl = process.env.OPTOMATE_API_URL;
   if (!optomateApiUrl) {
     throw new Error("OPTOMATE_API_URL environment variable is not set");
@@ -136,6 +208,12 @@ export async function getAppointmentCount(
       `[APPOINTMENT COUNT] Branch ${branch} on ${date}: ${count} appointments`
     );
 
+    // DB에 저장 (영구 저장)
+    db.prepare(`
+      INSERT OR REPLACE INTO appointment_count_cache (branch, date, count, updated_at)
+      VALUES (?, ?, ?, ?)
+    `).run(branch, date, count, Date.now());
+
     return count;
   } catch (error) {
     console.error(
@@ -151,12 +229,14 @@ export async function getAppointmentCount(
  * @param branches 브랜치 OptCode 배열
  * @param date YYYY-MM-DD 형식의 날짜
  * @param concurrency 동시에 실행할 최대 요청 수 (기본값: 3)
+ * @param forceRefresh 강제 갱신 여부 (배치 작업에서 사용, 기본값: false)
  * @returns 브랜치별 예약 개수 맵
  */
 export async function getAppointmentCounts(
   branches: string[],
   date: string,
-  concurrency: number = 3
+  concurrency: number = 3,
+  forceRefresh: boolean = false
 ): Promise<Map<string, number>> {
   const results = new Map<string, number>();
 
@@ -171,7 +251,7 @@ export async function getAppointmentCounts(
     // 배치 내에서 병렬 처리 (Promise.allSettled 사용 - 일부 실패해도 계속 진행)
     const batchPromises = batch.map(async (branch) => {
       try {
-        const count = await getAppointmentCount(branch, date);
+        const count = await getAppointmentCount(branch, date, forceRefresh);
         return { branch, count, success: true };
       } catch (error) {
         console.error(
@@ -206,5 +286,38 @@ export async function getAppointmentCounts(
   }
 
   return results;
+}
+
+/**
+ * 배치 작업: 특정 날짜의 모든 브랜치 예약 개수를 API에서 가져와서 DB에 저장
+ * 매일 새벽에 전날까지의 데이터를 누적시키는 용도
+ * @param date YYYY-MM-DD 형식의 날짜 (과거 날짜만)
+ * @param concurrency 동시에 실행할 최대 요청 수 (기본값: 3)
+ */
+export async function syncAppointmentCounts(
+  date: string,
+  concurrency: number = 3
+): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  const isPastDate = date < today;
+  
+  if (!isPastDate) {
+    console.log(
+      `[APPOINTMENT COUNT SYNC] Skipping ${date} - not a past date`
+    );
+    return;
+  }
+
+  const branches = OptomMap.map((store) => store.OptCode);
+  console.log(
+    `[APPOINTMENT COUNT SYNC] Syncing appointment counts for ${branches.length} branches on ${date}`
+  );
+
+  // forceRefresh=true로 모든 브랜치의 예약 개수를 가져와서 DB에 저장
+  await getAppointmentCounts(branches, date, concurrency, true);
+  
+  console.log(
+    `[APPOINTMENT COUNT SYNC] Completed syncing appointment counts for ${date}`
+  );
 }
 

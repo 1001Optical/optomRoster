@@ -42,6 +42,8 @@ async function sendChangeToOptomateAPI(): Promise<void> {
                 const summaries = await callOptomateAPI(changeLog, diffSummary);
                 return { id: changeLog.id, success: true, summaries };
             } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error(`❌ [CHANGE_LOG] Failed to process change log ${changeLog.id} (rosterId: ${changeLog.rosterId}):`, errorMessage);
                 return { id: changeLog.id, success: false, summaries: [] };
             }
         });
