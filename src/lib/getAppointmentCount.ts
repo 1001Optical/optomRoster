@@ -59,13 +59,14 @@ function getBranchDateRange(start: string, end: string, branch: string) {
 }
 
 /**
- * 실제 예약(눈검사) 개수를 가져오는 함수
+ * DURATION을 기반으로 예약 슬롯 개수를 계산하는 함수
+ * - DURATION 30 = 슬롯 1개
  * - 과거 날짜: DB에서 조회 (배치 작업으로 미리 저장된 데이터)
  * - 오늘/미래 날짜: 0 반환 (아직 누적되지 않았으므로)
  * @param branch OptCode (예: "BKT", "BON")
  * @param date YYYY-MM-DD 형식의 날짜
  * @param forceRefresh 강제 갱신 여부 (배치 작업에서 사용, 기본값: false)
- * @returns 예약 개수
+ * @returns 슬롯 개수 (DURATION / 30의 합계)
  */
 export async function getAppointmentCount(
   branch: string,
@@ -113,9 +114,9 @@ export async function getAppointmentCount(
 
     if (cached) {
       console.log(
-        `[APPOINTMENT COUNT] Using stored data for past date - branch ${branch} on ${date}: ${cached.count}`
+        `[APPOINTMENT COUNT] Using stored data for past date - branch ${branch} on ${date}: ${cached.count} slots`
       );
-      return cached.count;
+      return cached.count; // DB에 저장된 값은 이미 슬롯 개수
     }
     
     // DB에 없으면 0 반환 (아직 배치 작업이 실행되지 않았거나 데이터가 없는 경우)
@@ -165,16 +166,15 @@ export async function getAppointmentCount(
     `STATUS ne 9`,
   ].join(" and ");
 
-  // OData 쿼리 파라미터
+  // OData 쿼리 파라미터 - DURATION 필드만 선택하여 최소한의 데이터만 가져오기
   const params = new URLSearchParams({
     $filter: filter,
-    $count: "true",
-    $top: "0", // 카운트만 원하므로 데이터는 가져오지 않음
-    $select: "BRANCH_IDENTIFIER", // payload 최소화
+    $select: "DURATION", // DURATION 필드만 선택
+    $top: "10000", // 충분히 큰 값으로 설정 (하루에 10000개 이상의 예약은 거의 없음)
   });
 
   const url = `${optomateApiUrl}/Appointments?${params.toString()}`;
-  console.log(`[APPOINTMENT COUNT] Fetching for branch ${branch} on ${date}`);
+  console.log(`[APPOINTMENT COUNT] Fetching appointments with DURATION for branch ${branch} on ${date}`);
   console.log(`[APPOINTMENT COUNT] URL: ${url}`);
 
   try {
@@ -198,24 +198,42 @@ export async function getAppointmentCount(
 
     const result = await response.json();
 
-    // OData $count 응답 형식에 따라 처리
-    // { "@odata.count": 123 } 또는 response header에 있을 수 있음
-    const count =
-      result["@odata.count"] ??
-      parseInt(response.headers.get("x-odata-count") || "0", 10) ??
-      0;
-
-    console.log(
-      `[APPOINTMENT COUNT] Branch ${branch} on ${date}: ${count} appointments`
+    // OData 응답 형식: { value: [{ DURATION: 30 }, { DURATION: 60 }, ...] }
+    const appointments = result.value || [];
+    
+    // DURATION을 합산하여 슬롯 개수 계산 (DURATION 30 = 슬롯 1개)
+    // ROUNDUP(DURATION/30) = Math.ceil(DURATION/30)의 전체 합
+    const { totalSlots, totalDuration } = appointments.reduce(
+      (
+        acc: { totalSlots: number; totalDuration: number },
+        appointment: { DURATION?: number }
+      ) => {
+        const duration = appointment.DURATION || 0;
+        if (duration <= 0) {
+          return acc; // 유효하지 않은 DURATION은 건너뛰기
+        }
+        // DURATION을 30으로 나누어 슬롯 개수 계산 (올림 처리)
+        // 예: 30분 = 1슬롯, 31분 = 2슬롯, 60분 = 2슬롯
+        const slots = Math.ceil(duration / 30);
+        return {
+          totalSlots: acc.totalSlots + slots,
+          totalDuration: acc.totalDuration + duration,
+        };
+      },
+      { totalSlots: 0, totalDuration: 0 }
     );
 
-    // DB에 저장 (영구 저장)
+    console.log(
+      `[APPOINTMENT COUNT] Branch ${branch} on ${date}: ${appointments.length} appointments, ${totalSlots} slots (total DURATION: ${totalDuration})`
+    );
+
+    // DB에 저장 (영구 저장) - 슬롯 개수를 저장
     db.prepare(`
       INSERT OR REPLACE INTO appointment_count_cache (branch, date, count, updated_at)
       VALUES (?, ?, ?, ?)
-    `).run(branch, date, count, Date.now());
+    `).run(branch, date, totalSlots, Date.now());
 
-    return count;
+    return totalSlots;
   } catch (error) {
     console.error(
       `[APPOINTMENT COUNT] Error fetching appointment count for ${branch} on ${date}:`,
@@ -226,12 +244,12 @@ export async function getAppointmentCount(
 }
 
 /**
- * 여러 브랜치의 예약 개수를 동시에 가져오되, concurrency 제어
+ * 여러 브랜치의 예약 슬롯 개수를 동시에 가져오되, concurrency 제어
  * @param branches 브랜치 OptCode 배열
  * @param date YYYY-MM-DD 형식의 날짜
  * @param concurrency 동시에 실행할 최대 요청 수 (기본값: 3)
  * @param forceRefresh 강제 갱신 여부 (배치 작업에서 사용, 기본값: false)
- * @returns 브랜치별 예약 개수 맵
+ * @returns 브랜치별 슬롯 개수 맵
  */
 export async function getAppointmentCounts(
   branches: string[],
@@ -290,7 +308,7 @@ export async function getAppointmentCounts(
 }
 
 /**
- * 배치 작업: 특정 날짜의 모든 브랜치 예약 개수를 API에서 가져와서 DB에 저장
+ * 배치 작업: 특정 날짜의 모든 브랜치 예약 슬롯 개수를 API에서 가져와서 DB에 저장
  * 매일 새벽에 전날까지의 데이터를 누적시키는 용도
  * @param date YYYY-MM-DD 형식의 날짜 (과거 날짜만)
  * @param concurrency 동시에 실행할 최대 요청 수 (기본값: 3)
@@ -312,14 +330,14 @@ export async function syncAppointmentCounts(
 
   const branches = OptomMap.map((store) => store.OptCode);
   console.log(
-    `[APPOINTMENT COUNT SYNC] Syncing appointment counts for ${branches.length} branches on ${date}`
+    `[APPOINTMENT COUNT SYNC] Syncing appointment slot counts for ${branches.length} branches on ${date}`
   );
 
-  // forceRefresh=true로 모든 브랜치의 예약 개수를 가져와서 DB에 저장
+  // forceRefresh=true로 모든 브랜치의 예약 슬롯 개수를 가져와서 DB에 저장
   await getAppointmentCounts(branches, date, concurrency, true);
   
   console.log(
-    `[APPOINTMENT COUNT SYNC] Completed syncing appointment counts for ${date}`
+    `[APPOINTMENT COUNT SYNC] Completed syncing appointment slot counts for ${date}`
   );
 }
 
