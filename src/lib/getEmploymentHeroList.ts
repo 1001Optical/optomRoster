@@ -138,6 +138,12 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         // 이제 모든 직원 정보가 준비되었으므로 변환 처리 (동일한 로직 유지)
         const convertedData: (optomData | undefined)[] | [] = Array.isArray(result) ? result.map((shift: Shift, index: number): optomData | undefined => {
             try {
+                // workTypeId가 472663인 경우 Optomate로 보내지 않도록 제외
+                if (shift.workTypeId === 472663) {
+                    console.log(`[EMPLOYMENT HERO] Skipping shift ${shift.id} - workTypeId is 472663`);
+                    return undefined;
+                }
+
                 // 이름 확인
                 if (!shift.employeeName || !shift.employeeId) {
                     return undefined;

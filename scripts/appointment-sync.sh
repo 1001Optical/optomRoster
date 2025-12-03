@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# 매일 새벽에 실행하여 전날까지의 예약 개수를 동기화
-# Cron: 0 3 * * * (매일 새벽 3시)
-# 또는: 0 0 * * * (매일 자정)
-
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
@@ -20,5 +16,6 @@ else
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Appointment count sync failed"
     exit 1
 fi
+
 
 
