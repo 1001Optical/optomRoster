@@ -81,7 +81,7 @@ for store in "${stores[@]}"; do
     # Wait 5 minutes before starting next store (except for the last one)
     if [ $current -lt $total_stores ]; then
         echo "  ⏳ Next store will start in 5 minutes..."
-        sleep 300  # 5 minutes = 300 seconds
+        sleep 120  # 2 minutes = 120 seconds
         echo ""
     fi
 done
