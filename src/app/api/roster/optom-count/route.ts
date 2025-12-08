@@ -44,6 +44,7 @@ export async function GET(
         storeName: string;
         locationId: number;
         branch: string;
+        state: string;
         slotCount: number;
         appointmentCount: number;
         occupancyRate: number;
@@ -275,6 +276,7 @@ export async function GET(
           storeName: store.StoreName,
           locationId: store.LocationId,
           branch: store.OptCode,
+          state: store.State, // State 필드 추가
           slotCount: totalSlotCount,
           appointmentCount: totalAppointmentCount,
           occupancyRate: totalOccupancyRate,
@@ -327,6 +329,7 @@ export async function GET(
         storeName: store.StoreName,
         locationId: store.LocationId,
         branch: store.OptCode,
+        state: store.State, // State 필드 추가
         slotCount: slotCount,
         appointmentCount: appointmentCount,
         occupancyRate: occupancyRate,

@@ -108,6 +108,7 @@ interface OptomCountResult {
     storeName: string;
     locationId: number;
     branch: string;
+    state: string;
     slotCount: number;
     appointmentCount: number;
     occupancyRate: number;
