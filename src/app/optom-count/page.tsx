@@ -420,6 +420,14 @@ export default function OptomCountPage() {
                       return PINK;
                     };
 
+                    // 점유율에 따라 텍스트 색상만 반환 (배경색 제외)
+                    const getOccupancyTextColor = (rate: number) => {
+                      if (rate >= 75) return "text-emerald-900 font-bold";
+                      if (rate >= 50) return "text-teal-800 font-semibold";
+                      if (rate >= 25) return "text-amber-800 font-semibold";
+                      return "text-rose-800";
+                    };
+
                     // State별로 그룹화
                     const groupedByState = optomCountData.reduce((acc, item) => {
                       const state = item.state || 'UNKNOWN';
@@ -430,8 +438,16 @@ export default function OptomCountPage() {
                       return acc;
                     }, {} as Record<string, WeeklyOptomCountResult[]>);
 
+                    const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+                    
+                    // 전체 합계 계산 (모든 스토어)
+                    const allStores = optomCountData as WeeklyOptomCountResult[];
+                    const companyTotal = (viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0
+                      ? calculateStateTotal(allStores, weeklyDates)
+                      : null;
+
                     // State별로 렌더링
-                    return STATE_ORDER.map(state => {
+                    const stateRows = STATE_ORDER.map(state => {
                       const stateStores = groupedByState[state] || [];
                       if (stateStores.length === 0) return null;
 
@@ -440,17 +456,20 @@ export default function OptomCountPage() {
                         ? calculateStateTotal(stateStores, weeklyDates)
                         : null;
 
-                      const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-
                       return (
                         <React.Fragment key={state}>
                           {/* 주 헤더 행 */}
-                          <tr className="bg-gray-200">
+                          <tr className="bg-gray-200" style={{ position: 'sticky', top: '48px', zIndex: 9 }}>
                             <td 
-                              colSpan={weeklyDates.length + 2}
-                              className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300"
+                              className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
+                              style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 9 }}
                             >
                               {state}
+                            </td>
+                            <td 
+                              colSpan={weeklyDates.length + 1}
+                              className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
+                            >
                             </td>
                           </tr>
                           
@@ -484,7 +503,7 @@ export default function OptomCountPage() {
                                   <td className={`py-2 px-4 border-b border-gray-200 text-center text-gray-900 font-semibold ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`} style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 5 }}>
                                     {item.storeName}
                                   </td>
-                                  <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(totalOccupancyRate)} ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`} style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 5 }}>
+                                  <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyTextColor(totalOccupancyRate)} ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`} style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 5 }}>
                                     {totalOccupancyRate.toFixed(2)}%
                                   </td>
                                   {weeklyDates.map((date) => {
@@ -558,7 +577,7 @@ export default function OptomCountPage() {
                           
                           {/* 주별 토탈 행 */}
                           {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && stateTotal && (
-                            <tr className="bg-white font-bold border-t-2 border-gray-300">
+                            <tr className="bg-white font-bold border-t border-blue-300">
                               <td className="py-2 px-4 border-b border-gray-300 text-center text-gray-900 font-bold" 
                                   style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 5, backgroundColor: '#dbeafe' }}>
                                 {state} Total
@@ -601,6 +620,55 @@ export default function OptomCountPage() {
                         </React.Fragment>
                       );
                     });
+
+                    // 전체 합계 행 추가
+                    return (
+                      <>
+                        {stateRows}
+                        {/* 회사 전체 합계 행 */}
+                        {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && companyTotal && (
+                          <tr className="bg-white font-bold border-t-2 border-gray-400">
+                            <td className="py-3 px-4 border-b-2 border-gray-400 text-center text-gray-900 font-bold text-lg" 
+                                style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 5, backgroundColor: '#cbd5e0' }}>
+                              Company Total
+                            </td>
+                            <td className={`py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(companyTotal.totalOccupancyRate)}`}
+                                style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 5, backgroundColor: '#cbd5e0' }}>
+                              {companyTotal.totalOccupancyRate.toFixed(2)}%
+                            </td>
+                            {weeklyDates.map((date) => {
+                              const isFutureDate = date >= today;
+                              
+                              if (isFutureDate) {
+                                return (
+                                  <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
+                                    -
+                                  </td>
+                                );
+                              }
+                              
+                              const dateTotal = companyTotal.dateTotals[date];
+                              if (!dateTotal) {
+                                return (
+                                  <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
+                                    -
+                                  </td>
+                                );
+                              }
+                              
+                              return (
+                                <td key={date} className={`py-3 px-4 w-[120px] border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(dateTotal.occupancyRate)}`}>
+                                  <div className="flex flex-col">
+                                    <span className="text-sm">{dateTotal.appointmentCount}/{dateTotal.slotCount}</span>
+                                    <span>{dateTotal.occupancyRate.toFixed(2)}%</span>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        )}
+                      </>
+                    );
                   })()
                 ) : (
                   <tr>
