@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useEffect, useState, useCallback } from "react";
-import { getOptomCountByRange, OptomCountResult } from "@/utils/fetch_utils";
-import { toDateOnly } from "@/utils/time";
+import React, {useCallback, useEffect, useState} from "react";
+import {getOptomCountByRange, OptomCountResult} from "@/utils/fetch_utils";
+import {toDateOnly} from "@/utils/time";
 
 type ViewMode = "weekly" | "monthly";
 
@@ -24,6 +24,8 @@ function calculateStateTotal(
   weeklyDates: string[]
 ): { 
   totalOccupancyRate: number;
+  totalSlotCount: number;
+  totalAppointmentCount: number;
   dateTotals: Record<string, { slotCount: number; appointmentCount: number; occupancyRate: number }>;
 } {
   const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
@@ -73,7 +75,7 @@ function calculateStateTotal(
     };
   });
   
-  return { totalOccupancyRate, dateTotals: dateTotalsWithRate };
+  return { totalOccupancyRate, totalSlotCount, totalAppointmentCount, dateTotals: dateTotalsWithRate };
 }
 
 export default function OptomCountPage() {
@@ -239,8 +241,8 @@ export default function OptomCountPage() {
   };
 
   return (
-    <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center">
-      <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
+    <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center bg-white">
+      <div className="w-[1240px] h-full flex flex-col gap-4">
         {/* 헤더 및 컨트롤 */}
         <div className="w-full flex flex-col gap-4">
           <div className="flex justify-between items-center gap-3">
@@ -352,19 +354,19 @@ export default function OptomCountPage() {
         )}
 
         {/* Optom Count 표 */}
-        <div className="w-full flex flex-col gap-2">
+        <div className="w-full flex flex-col gap-2 flex-1 min-h-0">
           <h2 className="text-lg font-semibold text-gray-900">
             {getPeriodText()}
           </h2>
 
-          <div className="w-full border border-gray-300 rounded-md overflow-x-auto bg-white">
+          <div className="w-full border border-gray-300 rounded-md overflow-auto bg-white" style={{ maxHeight: 'calc(100vh - 300px)' }}>
             <table className="min-w-full border-collapse">
-              <thead className="bg-gray-100 sticky top-0">
+              <thead className="bg-gray-100 sticky top-0" style={{ zIndex: 20 }}>
                 <tr>
-                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900 bg-gray-100" style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 10 }}>
+                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900 bg-gray-100" style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 20, backgroundColor: '#f3f4f6' }}>
                     Store
                   </th>
-                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900 bg-gray-100" style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 10 }}>
+                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900 bg-gray-100" style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 20, backgroundColor: '#f3f4f6' }}>
                     Total (%)
                   </th>
                   {weeklyDates.map((date) => {
@@ -382,6 +384,66 @@ export default function OptomCountPage() {
                   })}
                 </tr>
               </thead>
+              {/* Company Total - 헤더 바로 아래에 고정 */}
+              {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && optomCountData.length > 0 && (() => {
+                const allStores = optomCountData as WeeklyOptomCountResult[];
+                const companyTotal = calculateStateTotal(allStores, weeklyDates);
+                const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+                
+                const getOccupancyColor = (rate: number) => {
+                  if (rate >= 75) return DARK_GREEN+" font-bold";
+                  if (rate >= 50) return LIGHT_GREEN+" font-semibold";
+                  if (rate >= 25) return YELLOW+" font-semibold";
+                  return PINK;
+                };
+
+                return (
+                  <tbody>
+                    <tr className="bg-white font-bold" style={{ position: 'sticky', top: '48px', zIndex: 9, backgroundColor: '#cbd5e0' }}>
+                      <td className="py-3 px-4 border-b-2 border-gray-400 text-center text-gray-900 font-bold text-lg" 
+                          style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#cbd5e0' }}>
+                        Company Total
+                      </td>
+                      <td className={`py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(companyTotal.totalOccupancyRate)}`}
+                          style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 10, backgroundColor: '#cbd5e0' }}>
+                        <div className="flex flex-col">
+                          <span className="text-sm">{companyTotal.totalAppointmentCount}/{companyTotal.totalSlotCount}</span>
+                          <span>{companyTotal.totalOccupancyRate.toFixed(2)}%</span>
+                        </div>
+                      </td>
+                      {weeklyDates.map((date) => {
+                        const isFutureDate = date >= today;
+                        
+                        if (isFutureDate) {
+                          return (
+                            <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
+                              -
+                            </td>
+                          );
+                        }
+                        
+                        const dateTotal = companyTotal.dateTotals[date];
+                        if (!dateTotal) {
+                          return (
+                            <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
+                              -
+                            </td>
+                          );
+                        }
+                        
+                        return (
+                          <td key={date} className={`py-3 px-4 w-[120px] border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(dateTotal.occupancyRate)}`}>
+                            <div className="flex flex-col">
+                              <span className="text-sm">{dateTotal.appointmentCount}/{dateTotal.slotCount}</span>
+                              <span>{dateTotal.occupancyRate.toFixed(2)}%</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                );
+              })()}
               <tbody>
                 {optomCountLoading ? (
                   <tr>
@@ -439,236 +501,224 @@ export default function OptomCountPage() {
                     }, {} as Record<string, WeeklyOptomCountResult[]>);
 
                     const today = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-                    
-                    // 전체 합계 계산 (모든 스토어)
-                    const allStores = optomCountData as WeeklyOptomCountResult[];
-                    const companyTotal = (viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0
-                      ? calculateStateTotal(allStores, weeklyDates)
-                      : null;
 
                     // State별로 렌더링
-                    const stateRows = STATE_ORDER.map(state => {
+                    // State별 데이터만 반환 (Company Total은 별도 tbody로 분리됨)
+                    return STATE_ORDER.map(state => {
                       const stateStores = groupedByState[state] || [];
                       if (stateStores.length === 0) return null;
 
                       // 주별 토탈 계산
                       const stateTotal = (viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0
-                        ? calculateStateTotal(stateStores, weeklyDates)
-                        : null;
+                          ? calculateStateTotal(stateStores, weeklyDates)
+                          : null;
 
                       return (
-                        <React.Fragment key={state}>
-                          {/* 주 헤더 행 */}
-                          <tr className="bg-gray-200" style={{ position: 'sticky', top: '48px', zIndex: 9 }}>
-                            <td 
-                              className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
-                              style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 9 }}
-                            >
-                              {state}
-                            </td>
-                            <td 
-                              colSpan={weeklyDates.length + 1}
-                              className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
-                            >
-                            </td>
-                          </tr>
-                          
-                          {/* 해당 주의 스토어들 */}
-                          {stateStores.map((item, storeIndex) => {
-                            const weeklyItem = item as WeeklyOptomCountResult;
+                          <React.Fragment key={state}>
+                            {/* 주 헤더 행 */}
+                            <tr className="bg-gray-200" style={{position: 'sticky', top: '120px', zIndex: 8}}>
+                              <td
+                                  className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
+                                  style={{width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 8}}
+                              >
+                                {state}
+                              </td>
+                              <td
+                                  colSpan={weeklyDates.length + 1}
+                                  className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
+                              >
+                              </td>
+                            </tr>
 
-                            if ((viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && weeklyItem.dateOccupancyRates) {
-                              // 오늘 미만 데이터만으로 Total 계산
-                              let totalSlotCount = 0;
-                              let totalAppointmentCount = 0;
-                              
-                              Object.entries(weeklyItem.dateOccupancyRates).forEach(([date, dateData]) => {
-                                if (date < today) {
-                                  if (typeof dateData === 'object' && dateData !== null && 'slotCount' in dateData && 'appointmentCount' in dateData) {
-                                    totalSlotCount += dateData.slotCount;
-                                    totalAppointmentCount += dateData.appointmentCount;
+                            {/* 해당 주의 스토어들 */}
+                            {stateStores.map((item, storeIndex) => {
+                              const weeklyItem = item as WeeklyOptomCountResult;
+
+                              if ((viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && weeklyItem.dateOccupancyRates) {
+                                // 오늘 미만 데이터만으로 Total 계산
+                                let totalSlotCount = 0;
+                                let totalAppointmentCount = 0;
+
+                                Object.entries(weeklyItem.dateOccupancyRates).forEach(([date, dateData]) => {
+                                  if (date < today) {
+                                    if (typeof dateData === 'object' && dateData !== null && 'slotCount' in dateData && 'appointmentCount' in dateData) {
+                                      totalSlotCount += dateData.slotCount;
+                                      totalAppointmentCount += dateData.appointmentCount;
+                                    }
                                   }
-                                }
-                              });
-                              
-                              const totalOccupancyRate = totalSlotCount > 0
-                                ? Math.round((totalAppointmentCount / totalSlotCount) * 100 * 100) / 100
-                                : 0;
-                              
+                                });
+
+                                const totalOccupancyRate = totalSlotCount > 0
+                                    ? Math.round((totalAppointmentCount / totalSlotCount) * 100 * 100) / 100
+                                    : 0;
+
+                                return (
+                                    <tr
+                                        key={item.locationId}
+                                        className={storeIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                                    >
+                                      <td className={`py-2 px-4 border-b border-gray-200 text-center text-gray-900 font-semibold ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                                          style={{
+                                            width: '200px',
+                                            minWidth: '200px',
+                                            position: 'sticky',
+                                            left: 0,
+                                            zIndex: 5
+                                          }}>
+                                        {item.storeName}
+                                      </td>
+                                      <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyTextColor(totalOccupancyRate)} ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                                          style={{
+                                            width: '120px',
+                                            minWidth: '120px',
+                                            position: 'sticky',
+                                            left: '200px',
+                                            zIndex: 5
+                                          }}>
+                                        <div className="flex flex-col">
+                                          <span className="text-sm">{totalAppointmentCount}/{totalSlotCount}</span>
+                                          <span>{totalOccupancyRate.toFixed(2)}%</span>
+                                        </div>
+                                      </td>
+                                      {weeklyDates.map((date) => {
+                                        const isFutureDate = date >= today;
+
+                                        // 오늘 이후 날짜는 "-" 표시
+                                        if (isFutureDate) {
+                                          return (
+                                              <td
+                                                  key={date}
+                                                  className="w-[120px] py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-400"
+                                              >
+                                                -
+                                              </td>
+                                          );
+                                        }
+
+                                        const dateData = weeklyItem.dateOccupancyRates?.[date];
+                                        if (!dateData) {
+                                          const rate = 0;
+                                          return (
+                                              <td
+                                                  key={date}
+                                                  className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(rate)}`}
+                                              >
+                                                {rate.toFixed(2)}%
+                                              </td>
+                                          );
+                                        }
+
+                                        return (
+                                            <td
+                                                key={date}
+                                                className={`py-2 px-4 w-[120px] border-b border-gray-200 text-center font-semibold ${getOccupancyColor(dateData.occupancyRate)}`}
+                                            >
+                                              <div className="flex flex-col">
+                                                <span
+                                                    className="text-sm">{dateData.appointmentCount}/{dateData.slotCount}</span>
+                                                <span>{dateData.occupancyRate.toFixed(2)}%</span>
+                                              </div>
+                                            </td>
+                                        );
+                                      })}
+                                    </tr>
+                                );
+                              }
+
+                              // 일반 모드 (weeklyDates가 없는 경우)
                               return (
-                                <tr
-                                  key={item.locationId}
-                                  className={storeIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                                >
-                                  <td className={`py-2 px-4 border-b border-gray-200 text-center text-gray-900 font-semibold ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`} style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 5 }}>
-                                    {item.storeName}
+                                  <tr
+                                      key={item.locationId}
+                                      className={storeIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                                  >
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center text-gray-900">
+                                      {item.storeName}
+                                    </td>
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center text-gray-900">
+                                      {item.locationId}
+                                    </td>
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-900">
+                                      {item.slotCount}
+                                    </td>
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-900">
+                                      {item.appointmentCount}
+                                    </td>
+                                    <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(item.occupancyRate)}`}>
+                                      {item.occupancyRate.toFixed(2)}%
+                                    </td>
+                                  </tr>
+                              );
+                            })}
+
+                            {/* 주별 토탈 행 */}
+                            {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && stateTotal && (
+                                <tr className="bg-white font-bold border-t border-blue-300">
+                                  <td className="py-2 px-4 border-b border-gray-300 text-center text-gray-900 font-bold"
+                                      style={{
+                                        width: '200px',
+                                        minWidth: '200px',
+                                        position: 'sticky',
+                                        left: 0,
+                                        zIndex: 5,
+                                        backgroundColor: '#dbeafe'
+                                      }}>
+                                    {state} Total
                                   </td>
-                                  <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyTextColor(totalOccupancyRate)} ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`} style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 5 }}>
-                                    {totalOccupancyRate.toFixed(2)}%
+                                  <td className={`py-2 px-4 border-b border-gray-300 text-center font-bold ${getOccupancyColor(stateTotal.totalOccupancyRate)}`}
+                                      style={{
+                                        width: '120px',
+                                        minWidth: '120px',
+                                        position: 'sticky',
+                                        left: '200px',
+                                        zIndex: 5,
+                                        backgroundColor: '#dbeafe'
+                                      }}>
+                                    <div className="flex flex-col">
+                                      <span
+                                          className="text-sm">{stateTotal.totalAppointmentCount}/{stateTotal.totalSlotCount}</span>
+                                      <span>{stateTotal.totalOccupancyRate.toFixed(2)}%</span>
+                                    </div>
                                   </td>
                                   {weeklyDates.map((date) => {
                                     const isFutureDate = date >= today;
-                                    
-                                    // 오늘 이후 날짜는 "-" 표시
+
                                     if (isFutureDate) {
                                       return (
-                                        <td
-                                          key={date}
-                                          className="w-[120px] py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-400"
-                                        >
-                                          -
-                                        </td>
+                                          <td key={date}
+                                              className="w-[120px] py-2 px-4 border-b border-gray-300 text-center font-bold text-gray-400"
+                                              style={{backgroundColor: '#dbeafe'}}>
+                                            -
+                                          </td>
                                       );
                                     }
-                                    
-                                    const dateData = weeklyItem.dateOccupancyRates?.[date];
-                                    if (!dateData) {
-                                      const rate = 0;
+
+                                    const dateTotal = stateTotal.dateTotals[date];
+                                    if (!dateTotal) {
                                       return (
-                                        <td
-                                          key={date}
-                                          className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(rate)}`}
-                                        >
-                                          {rate.toFixed(2)}%
-                                        </td>
+                                          <td key={date}
+                                              className="w-[120px] py-2 px-4 border-b border-gray-300 text-center font-bold"
+                                              style={{backgroundColor: '#dbeafe'}}>
+                                            -
+                                          </td>
                                       );
                                     }
-                                    
+
                                     return (
-                                      <td
-                                        key={date}
-                                        className={`py-2 px-4 w-[120px] border-b border-gray-200 text-center font-semibold ${getOccupancyColor(dateData.occupancyRate)}`}
-                                      >
-                                        <div className="flex flex-col">
-                                          <span className="text-sm">{dateData.appointmentCount}/{dateData.slotCount}</span>
-                                          <span>{dateData.occupancyRate.toFixed(2)}%</span>
-                                        </div>
-                                      </td>
+                                        <td key={date}
+                                            className={`py-2 px-4 w-[120px] border-b border-gray-300 text-center font-bold ${getOccupancyColor(dateTotal.occupancyRate)}`}>
+                                          <div className="flex flex-col">
+                                            <span
+                                                className="text-sm">{dateTotal.appointmentCount}/{dateTotal.slotCount}</span>
+                                            <span>{dateTotal.occupancyRate.toFixed(2)}%</span>
+                                          </div>
+                                        </td>
                                     );
                                   })}
                                 </tr>
-                              );
-                            }
-
-                            // 일반 모드 (weeklyDates가 없는 경우)
-                            return (
-                              <tr
-                                key={item.locationId}
-                                className={storeIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                              >
-                                <td className="py-2 px-4 border-b border-gray-200 text-center text-gray-900">
-                                  {item.storeName}
-                                </td>
-                                <td className="py-2 px-4 border-b border-gray-200 text-center text-gray-900">
-                                  {item.locationId}
-                                </td>
-                                <td className="py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-900">
-                                  {item.slotCount}
-                                </td>
-                                <td className="py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-900">
-                                  {item.appointmentCount}
-                                </td>
-                                <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(item.occupancyRate)}`}>
-                                  {item.occupancyRate.toFixed(2)}%
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          
-                          {/* 주별 토탈 행 */}
-                          {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && stateTotal && (
-                            <tr className="bg-white font-bold border-t border-blue-300">
-                              <td className="py-2 px-4 border-b border-gray-300 text-center text-gray-900 font-bold" 
-                                  style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 5, backgroundColor: '#dbeafe' }}>
-                                {state} Total
-                              </td>
-                              <td className={`py-2 px-4 border-b border-gray-300 text-center font-bold ${getOccupancyColor(stateTotal.totalOccupancyRate)}`}
-                                  style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 5, backgroundColor: '#dbeafe' }}>
-                                {stateTotal.totalOccupancyRate.toFixed(2)}%
-                              </td>
-                              {weeklyDates.map((date) => {
-                                const isFutureDate = date >= today;
-                                
-                                if (isFutureDate) {
-                                  return (
-                                    <td key={date} className="w-[120px] py-2 px-4 border-b border-gray-300 text-center font-bold text-gray-400" style={{ backgroundColor: '#dbeafe' }}>
-                                      -
-                                    </td>
-                                  );
-                                }
-                                
-                                const dateTotal = stateTotal.dateTotals[date];
-                                if (!dateTotal) {
-                                  return (
-                                    <td key={date} className="w-[120px] py-2 px-4 border-b border-gray-300 text-center font-bold" style={{ backgroundColor: '#dbeafe' }}>
-                                      -
-                                    </td>
-                                  );
-                                }
-                                
-                                return (
-                                  <td key={date} className={`py-2 px-4 w-[120px] border-b border-gray-300 text-center font-bold ${getOccupancyColor(dateTotal.occupancyRate)}`}>
-                                    <div className="flex flex-col">
-                                      <span className="text-sm">{dateTotal.appointmentCount}/{dateTotal.slotCount}</span>
-                                      <span>{dateTotal.occupancyRate.toFixed(2)}%</span>
-                                    </div>
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          )}
-                        </React.Fragment>
+                            )}
+                          </React.Fragment>
                       );
                     });
-
-                    // 전체 합계 행 추가
-                    return (
-                      <>
-                        {stateRows}
-                        {/* 회사 전체 합계 행 */}
-                        {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && companyTotal && (
-                          <tr className="bg-white font-bold border-t-2 border-gray-400">
-                            <td className="py-3 px-4 border-b-2 border-gray-400 text-center text-gray-900 font-bold text-lg" 
-                                style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 5, backgroundColor: '#cbd5e0' }}>
-                              Company Total
-                            </td>
-                            <td className={`py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(companyTotal.totalOccupancyRate)}`}
-                                style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 5, backgroundColor: '#cbd5e0' }}>
-                              {companyTotal.totalOccupancyRate.toFixed(2)}%
-                            </td>
-                            {weeklyDates.map((date) => {
-                              const isFutureDate = date >= today;
-                              
-                              if (isFutureDate) {
-                                return (
-                                  <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
-                                    -
-                                  </td>
-                                );
-                              }
-                              
-                              const dateTotal = companyTotal.dateTotals[date];
-                              if (!dateTotal) {
-                                return (
-                                  <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
-                                    -
-                                  </td>
-                                );
-                              }
-                              
-                              return (
-                                <td key={date} className={`py-3 px-4 w-[120px] border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(dateTotal.occupancyRate)}`}>
-                                  <div className="flex flex-col">
-                                    <span className="text-sm">{dateTotal.appointmentCount}/{dateTotal.slotCount}</span>
-                                    <span>{dateTotal.occupancyRate.toFixed(2)}%</span>
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        )}
-                      </>
-                    );
                   })()
                 ) : (
                   <tr>
