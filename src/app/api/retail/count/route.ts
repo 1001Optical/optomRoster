@@ -39,7 +39,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        const api = `${server_url}/rostershift?filter.fromDate=${date}&filter.toDate=${date}&filter.locationId=${locationId}`
+        const api = `${server_url}/rostershift?filter.fromDate=${date}&filter.toDate=${date}&filter.locationId=${locationId}&filter.ShiftStatus=published`
         console.log(api)
         const response = await fetch(api, {
             method: "GET",
