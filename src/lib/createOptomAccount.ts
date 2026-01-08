@@ -1,6 +1,8 @@
 import {createSecret} from "@/utils/crypto";
 import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
 
+const API_TOKEN = process.env.API_TOKEN
+
 const CheckError = (text:string) => {
     const re = /\b(IDENTIFIER|USERNAME)\b/i; // 1번 패턴
     const m = re.exec(text);
@@ -16,7 +18,7 @@ const removeSpecialChars = (str: string): string => {
     return str.replace(/[^a-zA-Z0-9]/g, '');
 }
 
-export const createOptomAccount = async (firstName: string, lastName: string, email: string) => {
+export const createOptomAccount = async (id: string, firstName: string, lastName: string, email: string) => {
     console.log(`=== Creating Optomate Account ===`);
     console.log(`FirstName: ${firstName}, LastName: ${lastName}, Email: ${email}`);
 
@@ -74,7 +76,8 @@ export const createOptomAccount = async (firstName: string, lastName: string, em
                 "EMAIL_ADDRESS": email,
                 "IS_ADMINISTRATOR": false,
                 "USE_APPBOOK": true,
-                "IS_ROAMING_USER": true
+                "IS_ROAMING_USER": true,
+                "EXTERNAL_USER_ID": id
             };
 
             console.log("BODY: ", body)
@@ -84,7 +87,7 @@ export const createOptomAccount = async (firstName: string, lastName: string, em
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        "authorization": createSecret("1001_HO_JH", "10011001"),
+                        "Authorization": API_TOKEN ?? ""
                     },
                     body: JSON.stringify(body)
                 });
@@ -101,7 +104,7 @@ export const createOptomAccount = async (firstName: string, lastName: string, em
                 if(result.success) {
                     convertedData = {
                         id: result.data.id,
-                        username: `${username}${i}`
+                        username: `${username}${u}`
                     };
                     console.log(`Account created successfully:`, convertedData);
                     break;

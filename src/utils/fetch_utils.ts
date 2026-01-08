@@ -28,9 +28,31 @@ const refresh = async (start?: Date, end?: Date, locationId?: number) => {
         }
         
         const result = await response.json();
-        console.log(`Roster refresh completed, received ${result.data?.length || 0} items`);
+        console.log("[FETCH_UTILS] Full API response:", result);
         
-        return result.data;
+        // API 응답 구조: { message: "success", data: { data: [], slotMismatches: [], appointmentConflicts: [] } }
+        const responseData = result.data || { data: [], slotMismatches: [], appointmentConflicts: [] };
+        
+        console.log(`[FETCH_UTILS] Extracted responseData:`, {
+            dataLength: responseData.data?.length || 0,
+            slotMismatchesLength: responseData.slotMismatches?.length || 0,
+            appointmentConflictsLength: responseData.appointmentConflicts?.length || 0,
+            slotMismatches: responseData.slotMismatches,
+            appointmentConflicts: responseData.appointmentConflicts
+        });
+        
+        if (responseData.slotMismatches && responseData.slotMismatches.length > 0) {
+            console.warn(`⚠️ Found ${responseData.slotMismatches.length} slot mismatches`);
+        }
+        if (responseData.appointmentConflicts && responseData.appointmentConflicts.length > 0) {
+            console.warn(`❌ Found ${responseData.appointmentConflicts.length} appointment conflicts`);
+        }
+        
+        return {
+            data: responseData.data || [],
+            slotMismatches: responseData.slotMismatches || [],
+            appointmentConflicts: responseData.appointmentConflicts || []
+        };
     } catch (err) {
         console.error("Error in roster refresh:", err);
         throw err;

@@ -1,5 +1,7 @@
 import {apiFetch} from "@/services/apiFetch";
 
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
+
 interface IResult { id: number, workHistory: string[] }
 
 type SearchOptomIdType = (firstName: string, lastName: string, email?: string) => Promise<IResult | undefined>;
@@ -34,6 +36,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                "Authorization": API_TOKEN ?? ""
             },
             body: JSON.stringify({
                 firstName: firstName,
@@ -44,19 +47,30 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             const {data} = result
 
             if (data?.optomId) {
+                // 이름으로 찾았으면 캐시하고 반환
                 optomCache.set(cacheKey, {id: data.optomId, workHistory: data.workHistory});
-            }else if(!!email){
-
-                const result = await apiFetch(url, {
+                return {id: data.optomId, workHistory: data.workHistory};
+            } else if(!!email){
+                // 이름으로 못 찾았고 email이 있으면 email로 재검색
+                console.log(`Name search failed, trying email search for: ${email}`);
+                const emailResult = await apiFetch(url, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({ email })
                 });
+                
+                if (emailResult.success && emailResult.data?.optomId) {
+                    // email로 찾았으면 캐시하고 반환
+                    const emailData = emailResult.data;
+                    optomCache.set(cacheKey, {id: emailData.optomId, workHistory: emailData.workHistory});
+                    console.log(`Found optometrist by email: ${emailData.optomId}`);
+                    return {id: emailData.optomId, workHistory: emailData.workHistory};
+                }
             }
 
-            return data ? {id: data.optomId, workHistory: data.workHistory} : undefined;
+            return undefined;
         }
     } catch (error) {
         console.error(`Error searching for optometrist ID for ${firstName} ${lastName}:`, error);
@@ -64,11 +78,11 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
     }
 }
 
-type AddWorkHistory = (id: number, branch: string) => Promise<IResult | undefined>;
+type AddWorkHistory = (id: number, branch: string) => Promise<boolean>;
 
 export const addWorkHistory: AddWorkHistory = async (id, branch) => {
     console.log(`=== Post Work History ===`);
-    console.log(`ID: `);
+    console.log(`ID: ${id}`);
 
     try {
         if (!id || !branch) {

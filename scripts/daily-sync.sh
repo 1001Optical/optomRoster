@@ -10,8 +10,8 @@ cd "$PROJECT_DIR"
 start_date=$(date '+%Y-%m-%d')
 end_date=$(date -d "+14 days" '+%Y-%m-%d')
 
-# Call refresh API
+# Call refresh API with scheduler flag
 api_url=${API_URL:-"http://localhost:3000"}
-curl -s "$api_url/api/roster/refresh?from=$start_date&to=$end_date" > /dev/null
+curl -s "$api_url/api/roster/refresh?from=$start_date&to=$end_date&scheduler=true" > /dev/null
 
 echo "[$(date '+%H:%M:%S')] Daily sync completed: $start_date to $end_date"

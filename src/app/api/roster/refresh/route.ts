@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
 import {I1001Response} from "@/types/api_response";
 import {optomData} from "@/types/types";
 import {getEmploymentHeroList} from "@/lib/getEmploymentHeroList";
+import {SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {toLocalIsoNoOffset} from "@/utils/time";
 import {startOfDay, endOfDay, endOfMonth, addMonths, addWeeks, endOfWeek} from "date-fns";
 
+interface RefreshResponse {
+    data: optomData[];
+    slotMismatches: SlotMismatch[];
+    appointmentConflicts: AppointmentConflict[];
+}
 
-export async function GET(request: Request): Promise<NextResponse<I1001Response<optomData[]>>>  {
+export async function GET(request: Request): Promise<NextResponse<I1001Response<RefreshResponse>>>  {
     try {
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
@@ -14,6 +20,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         let toDate = searchParams.get("to") ?? "";
         const range = searchParams.get("range");
         const branch = searchParams.get("branch");
+        const isScheduler = searchParams.get("scheduler") === "true"; // 스케줄러인지 확인
 
         if(range){
             const todayDate = new Date();
@@ -91,12 +98,16 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch);
+        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch, isScheduler);
 
         return NextResponse.json(
             {
                 message: "success",
-                data: result
+                data: {
+                    data: result.data,
+                    slotMismatches: result.slotMismatches,
+                    appointmentConflicts: result.appointmentConflicts
+                }
             },
             { status: 200 }
         );

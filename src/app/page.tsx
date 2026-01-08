@@ -9,6 +9,8 @@ import { DateRange } from "react-day-picker";
 import { RiRefreshLine } from "react-icons/ri";
 import IooISelect from "@/components/IooISelect";
 import {OptomMap} from "@/data/stores";
+import {SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
+import AlertToast from "@/components/AlertToast";
 
 // 오늘 기준으로 이번 주의 일요일부터 토요일까지의 날짜 범위를 계산하는 함수
 function getCurrentWeekRange(): DateRange {
@@ -39,6 +41,8 @@ export default function Home() {
     const [selectOption, setSelectOption] = useState<number | undefined>()
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [slotMismatches, setSlotMismatches] = useState<SlotMismatch[]>([]);
+    const [appointmentConflicts, setAppointmentConflicts] = useState<AppointmentConflict[]>([]);
     const [rangeType] = useState<"weekly" | "monthly">("weekly")
     const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>(getCurrentWeekRange())
 
@@ -99,10 +103,36 @@ export default function Home() {
                     console.log("=== Manual Refresh Triggered ===");
                     setLoading(true);
                     setError(null);
+                    setSlotMismatches([]);
+                    setAppointmentConflicts([]);
 
                     try {
-                        await refresh(selectedWeek?.from, selectedWeek?.to, selectOption);
+                        const refreshResult = await refresh(selectedWeek?.from, selectedWeek?.to, selectOption);
                         console.log("Manual refresh completed successfully");
+                        console.log("[PAGE] Refresh result:", refreshResult);
+                        
+                        // 타임슬롯 불일치 정보 저장 (빈 배열이어도 저장)
+                        const slotMismatches = refreshResult?.slotMismatches || [];
+                        console.log(`[PAGE] Setting ${slotMismatches.length} slot mismatches:`, slotMismatches);
+                        console.log(`[PAGE] Slot mismatches data:`, JSON.stringify(slotMismatches, null, 2));
+                        setSlotMismatches(slotMismatches);
+                        if (slotMismatches.length > 0) {
+                            console.warn(`⚠️ Found ${slotMismatches.length} slot mismatches`);
+                        } else {
+                            console.log(`[PAGE] No slot mismatches found`);
+                        }
+                        
+                        // Appointment 충돌 정보 저장 (빈 배열이어도 저장)
+                        const appointmentConflicts = refreshResult?.appointmentConflicts || [];
+                        console.log(`[PAGE] Setting ${appointmentConflicts.length} appointment conflicts:`, appointmentConflicts);
+                        console.log(`[PAGE] Appointment conflicts data:`, JSON.stringify(appointmentConflicts, null, 2));
+                        setAppointmentConflicts(appointmentConflicts);
+                        if (appointmentConflicts.length > 0) {
+                            console.warn(`❌ Found ${appointmentConflicts.length} appointment conflicts`);
+                        } else {
+                            console.log(`[PAGE] No appointment conflicts found`);
+                        }
+                        
                         // 데이터 다시 로드
                         const newData = await getList(selectedWeek?.from, selectedWeek?.to, selectOption);
                         if (newData) {
@@ -138,6 +168,19 @@ export default function Home() {
                         </div>
                     </div>
                 </div>
+            </div>
+        )}
+
+        <AlertToast 
+            slotMismatches={slotMismatches}
+            appointmentConflicts={appointmentConflicts}
+        />
+        
+        {/* 디버깅: 현재 state 확인 */}
+        {process.env.NODE_ENV === 'development' && (
+            <div className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs p-2 rounded z-50 max-w-xs">
+                <div>Slot Mismatches: {slotMismatches.length}</div>
+                <div>Appointment Conflicts: {appointmentConflicts.length}</div>
             </div>
         )}
 

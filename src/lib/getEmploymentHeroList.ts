@@ -5,10 +5,10 @@ import {Shift} from "@/types/employment_hero_response";
 import {syncRoster} from "@/lib/syncRoster";
 import {OptomMap} from "@/data/stores";
 import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
-import {sendChangeToOptomateAPI} from "@/lib/changeProcessor";
+import {sendChangeToOptomateAPI, SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
 
-export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null) => Promise<optomData[]> = async (fromDate, toDate, branch) => {
+export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false) => {
     try {
         const db = getDB();
 
@@ -210,11 +210,20 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         console.log(`   └─ Converted: ${filterData.length}`);
         console.log(`   └─ Failed: ${result.length - filterData.length}\n`);
 
-        await syncRoster(db, filterData, {start: fromDate, end: toDate});
+        // 동기화한 브랜치의 locationId 추출 (중복 제거)
+        const syncedLocationIds = branch 
+            ? [OptomMap.find(v => v.OptCode === branch)?.LocationId].filter((id): id is number => id != null)
+            : [...new Set(filterData.map(v => v.locationId).filter((id): id is number => id != null))];
 
-        await sendChangeToOptomateAPI();
+        await syncRoster(db, filterData, {
+            start: fromDate, 
+            end: toDate, 
+            locationIds: syncedLocationIds
+        });
 
-        return filterData; // 실제 필터링된 데이터 반환
+        const { slotMismatches, appointmentConflicts } = await sendChangeToOptomateAPI(isScheduler);
+
+        return { data: filterData, slotMismatches, appointmentConflicts }; // 실제 필터링된 데이터와 타임슬롯 불일치 정보, appointment 충돌 정보 반환
     } catch (error) {
         console.error("Error in getEmploymentHeroList:", error);
         throw error;

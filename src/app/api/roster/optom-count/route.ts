@@ -5,30 +5,7 @@ import { getDB } from "@/utils/db/db";
 import { getDateRange } from "@/utils/time";
 import { createSecret } from "@/utils/crypto";
 import { Shift } from "@/types/employment_hero_response";
-
-
-/**
- * 근무 시간(분)을 기반으로 30분 슬롯 개수 계산
- * - 30분마다 눈검사 슬롯이 있음
- * - 브레이크는 항상 있음 (10시간 미만: break 1개, 10시간 이상: break 2개)
- */
-function calculateSlots(workMinutes: number): number {
-  // 30분 단위 슬롯 개수 계산
-  const totalSlots = Math.floor(workMinutes / 30);
-  
-  // break time 개수 결정
-  const workHours = workMinutes / 60;
-  let breakCount = 1; // 기본적으로 브레이크 1개는 항상 있음
-  
-  if (workHours >= 10) {
-    breakCount = 2; // 10시간 이상이면 break 2개
-  }
-  // 10시간 미만이면 break 1개 (기본값)
-  
-  // break time을 제외한 실제 슬롯 개수
-  // break는 30분씩이므로 breakCount만큼 빼기
-  return Math.max(0, totalSlots - breakCount);
-}
+import { calculateSlots } from "@/utils/slots";
 
 /**
  * 스토어별 Optom Roster 카운트와 실제 예약 개수, 점유율을 반환하는 API
@@ -97,9 +74,6 @@ export async function GET(
         { status: 400 }
       );
     }
-
-    // OptomMap의 LocationId 목록
-    const optomLocationIds = OptomMap.map((store) => store.LocationId);
 
     console.log(`[OPTOM COUNT] Processing ${dates.length} date(s): ${dates[0]} to ${dates[dates.length - 1]}`);
     console.log(`[OPTOM COUNT] Fetching data from Employment Hero API (no DB read/write)`);
