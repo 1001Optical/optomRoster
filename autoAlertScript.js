@@ -148,7 +148,7 @@ function buildHtml(rows) {
     return `
     <div style="font-family:Arial,sans-serif;">
       <p>Hi Shannon</p>
-      <p>The QoH for these items has fallen below the threshold quantity.</p>
+      <p>The QOH for these items has fallen below the threshold quantity.</p>
       <table style="border-collapse:collapse;">
         <thead>
           <tr>
