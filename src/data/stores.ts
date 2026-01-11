@@ -17,8 +17,6 @@ export const OptomMap =[
     { "LocationId": 313208, "StoreName": "Emporium", "State": "VIC", "OptCode": "EMP" },
 
     { "LocationId": 315778, "StoreName": "Indooroopilly", "State": "QLD", "OptCode": "IND" },
-
-    { "LocationId": 313214, "StoreName": "Head Office", "State": "NSW", "OptCode": "HO"}
 ]
 
 export const RetailMap = [
