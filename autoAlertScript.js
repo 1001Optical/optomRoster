@@ -40,7 +40,7 @@ function toBase64Url(str) {
 // =====================
 const BASE_URL = "https://1001optdb.habitat3.net:12443/OptomateTouch/OData4/";
 const TOKEN = createSecret("1001_HO_JH", "10011001")
-const TO_EMAILS = "scchosam132@gmail.com"
+const TO_EMAILS = "shannon@1001optical.com.au"
 
 const ITEMS = [
     {barcode: "20015195", alertPoint: 60},

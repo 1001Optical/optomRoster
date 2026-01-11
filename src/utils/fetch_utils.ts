@@ -19,7 +19,7 @@ const refresh = async (start?: Date, end?: Date, locationId?: number) => {
         
         console.log(`Fetching roster data from ${fromDate} to ${toDate}${branch ? ` (Store: ${branch})` : ""}`);
         
-        const response = await fetch(`/roster/api/roster/refresh?from=${fromDate}&to=${toDate}${branchParam}`, {
+        const response = await fetch(`/roster/api/roster/refresh?scheduler=true&from=${fromDate}&to=${toDate}${branchParam}`, {
             method: "GET",
         });
         
