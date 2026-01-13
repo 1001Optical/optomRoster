@@ -21,7 +21,11 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         let selectedLocations = OptomMap.map(v => `filter.selectedLocations=${v.LocationId}`).join("&")
         if(branch) {
-            selectedLocations = `filter.selectedLocations=${OptomMap.find(v => v.OptCode === branch)?.LocationId}`
+            const locationId = OptomMap.find(v => v.OptCode === branch)?.LocationId;
+            if (!locationId) {
+                throw new Error(`Invalid branch code: ${branch}`);
+            }
+            selectedLocations = `filter.selectedLocations=${locationId}`
         }
 
         const api = `${server_url}/rostershift?filter.SelectAllRoles=true&filter.ShiftStatuses=published&filter.fromDate=${fromDate}&filter.toDate=${toDate}${selectedLocations ? `&${selectedLocations}` : ""}`

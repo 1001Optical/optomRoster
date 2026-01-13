@@ -2,24 +2,46 @@ import {toDateOnly} from "@/utils/time";
 import {formatting} from "@/utils/formatting";
 import {OptomMap} from "@/data/stores";
 
+function getCurrentWeekRange(): { from: Date; to: Date } {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0(Sun) ~ 6(Sat)
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - dayOfWeek);
+    sunday.setHours(0, 0, 0, 0);
+
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    saturday.setHours(23, 59, 59, 999);
+
+    return { from: sunday, to: saturday };
+}
+
 const refresh = async (start?: Date, end?: Date, locationId?: number) => {
     console.log("=== Refreshing Roster Data ===");
     console.log(`Start: ${start}, End: ${end}, LocationId: ${locationId}`);
     
     try {
+        const fallbackRange = getCurrentWeekRange();
         // 날짜만 추출하여 전송 (백엔드에서 정규화하지만, 프론트엔드에서도 명확하게)
-        const fromDate = toDateOnly(start ?? new Date("2025-09-01T00:00:00Z"));
-        const toDate = toDateOnly(end ?? new Date("2025-09-16T23:59:59Z"));
+        const fromDate = toDateOnly(start ?? fallbackRange.from);
+        const toDate = toDateOnly(end ?? fallbackRange.to);
         
         // LocationId를 OptCode로 변환 (branch 파라미터용)
         const branch = locationId 
             ? OptomMap.find(v => v.LocationId === locationId)?.OptCode 
             : undefined;
-        const branchParam = branch ? `&branch=${branch}` : "";
+
+        // ⚠️ 안전장치: UI 수동 싱크에서 브랜치 미지정 시 올브랜치 쿼리가 발생하므로 막음
+        if (!branch) {
+            throw new Error("Please select a store before syncing (prevents syncing all branches unintentionally).");
+        }
+
+        const branchParam = `&branch=${branch}`;
         
         console.log(`Fetching roster data from ${fromDate} to ${toDate}${branch ? ` (Store: ${branch})` : ""}`);
         
-        const response = await fetch(`/roster/api/roster/refresh?scheduler=true&from=${fromDate}&to=${toDate}${branchParam}`, {
+        // manual=true: 서버에서 수동 호출에만 추가 안전장치를 적용하기 위한 플래그
+        const response = await fetch(`/roster/api/roster/refresh?manual=true&scheduler=true&from=${fromDate}&to=${toDate}${branchParam}`, {
             method: "GET",
         });
         
@@ -97,9 +119,10 @@ const getList = async (start?: Date, end?: Date, locationId?: number) => {
     console.log(`Start: ${start}, End: ${end}, LocationId: ${locationId}`);
     
     try {
+        const fallbackRange = getCurrentWeekRange();
         // 날짜만 추출하여 전송 (백엔드에서 정규화하지만, 프론트엔드에서도 명확하게)
-        const fromDate = toDateOnly(start ?? new Date("2025-09-01T00:00:00Z"));
-        const toDate = toDateOnly(end ?? new Date("2025-09-16T23:59:59Z"));
+        const fromDate = toDateOnly(start ?? fallbackRange.from);
+        const toDate = toDateOnly(end ?? fallbackRange.to);
         const locationParam = locationId ? `&locationId=${locationId}` : "";
         
         console.log(`Fetching roster list from ${fromDate} to ${toDate}${locationParam}`);

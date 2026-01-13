@@ -19,6 +19,26 @@ interface ProcessedSummary {
     end: string;
 }
 
+function logLocumEmailSkip(
+    result: { isLocum?: boolean, emailData?: PostEmailData | null, workFirst?: boolean, optomId?: number, summary?: ProcessedSummary },
+    context: string
+) {
+    if (!result?.isLocum) return;
+    const reason = !result.emailData
+        ? "no-emailData"
+        : result.workFirst === false
+            ? "workFirst-false"
+            : "unknown";
+    console.log(
+        `[LOCUM EMAIL] skip context=${context}` +
+        ` reason=${reason}` +
+        ` optomId=${result.optomId ?? "-"}` +
+        ` date=${result.summary?.date ?? "-"}` +
+        ` workFirst=${result.workFirst ?? "-"}` +
+        ` hasEmailData=${!!result.emailData}`
+    );
+}
+
 // 타임슬롯 불일치 정보 타입
 export interface SlotMismatch {
     branch: string;
@@ -685,13 +705,15 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                 if (result.slotMismatch) {
                     mismatches.push(result.slotMismatch);
                 }
-                if (result.isLocum && result.emailData && !!result.workFirst) {
+                if (result.isLocum && result.emailData && result.workFirst) {
                     locumResults.push({
                         emailData: result.emailData,
                         isFirst: result.isFirst,
                         optomId: result.optomId,
                         workHistory: result.workHistory
                     });
+                } else {
+                    logLocumEmailSkip(result, `change:${key}`);
                 }
             }
                 if (result.appointmentConflict) {
@@ -720,13 +742,15 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                     if (result.slotMismatch) {
                         mismatches.push(result.slotMismatch);
                     }
-                    if (result.isLocum && result.emailData && !result.workFirst) {
+                    if (result.isLocum && result.emailData && result.workFirst) {
                         locumResults.push({
                             emailData: result.emailData,
                             isFirst: result.isFirst,
                             optomId: result.optomId,
                             workHistory: result.workHistory
                         });
+                    } else {
+                        logLocumEmailSkip(result, "insert:new");
                     }
                 }
                 if (result.appointmentConflict) {

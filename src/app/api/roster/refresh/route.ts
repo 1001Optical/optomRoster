@@ -21,6 +21,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const range = searchParams.get("range");
         const branch = searchParams.get("branch");
         const isScheduler = searchParams.get("scheduler") === "true"; // 스케줄러인지 확인
+        const isManual = searchParams.get("manual") === "true"; // UI 수동 호출 여부 (안전장치용)
 
         if(range){
             const todayDate = new Date();
@@ -96,6 +97,39 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                 },
                 { status: 400 }
             );
+        }
+
+        // 날짜 순서 검증
+        if (fromDateObj.getTime() > toDateObj.getTime()) {
+            return NextResponse.json(
+                {
+                    message: "Invalid date range: from must be <= to",
+                },
+                { status: 400 }
+            );
+        }
+
+        // 수동 호출 안전장치: 브랜치 미지정(=올브랜치) 방지 + 기간 상한
+        if (isManual && !branch) {
+            return NextResponse.json(
+                {
+                    message: "Manual sync requires branch parameter (prevents syncing all branches unintentionally).",
+                },
+                { status: 400 }
+            );
+        }
+
+        if (isManual) {
+            const diffDays = Math.floor((toDateObj.getTime() - fromDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const MAX_DAYS = 21; // 수동 버튼으로는 최대 3주까지만
+            if (diffDays > MAX_DAYS) {
+                return NextResponse.json(
+                    {
+                        message: `Manual sync range too large: max ${MAX_DAYS} days allowed`,
+                    },
+                    { status: 400 }
+                );
+            }
         }
 
         const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch, isScheduler);

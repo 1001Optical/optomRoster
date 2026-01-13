@@ -63,10 +63,12 @@ export const postEmail = async (data: PostEmailData | undefined, isFirst: boolea
             }
         }
 
-        console.log(`  ✅ [EMAIL] Email sent successfully to ${data.email}\n`);
+        // ✅ Locum email 결과 요약 로그 (필요한 최소 정보만)
+        console.log(`[LOCUM EMAIL] ok email=${data.email} store=${data.storeName} date=${data.rosterDate} isFirst=${isFirst} status=${response.status}`);
+        
         return response;
     } catch (error) {
-        console.error(`  ❌ [EMAIL] Error sending email to ${data.email}:`, error);
+        console.error(`[LOCUM EMAIL] fail email=${data?.email} store=${data?.storeName} date=${data?.rosterDate} isFirst=${isFirst} reason=${error instanceof Error ? error.message : String(error)}`);
         throw error;
     }
 }
