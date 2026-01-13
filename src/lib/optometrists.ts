@@ -102,6 +102,7 @@ export const addWorkHistory: AddWorkHistory = async (id, branch) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                "Authorization": API_TOKEN ?? ""
             },
             body: JSON.stringify({
                 optomId: id,
