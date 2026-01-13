@@ -585,7 +585,7 @@ async function processOptomData(
             if(workFirst) {
                 emailData = {
                     email,
-                    lastName: optomData.lastName || optomData.firstName,
+                    lastName: optomData.firstName,
                     storeName: branchInfo.StoreName,
                     rosterDate: date,
                     rosterStart: APP_ADJUST.ADJUST_START,
@@ -685,7 +685,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                 if (result.slotMismatch) {
                     mismatches.push(result.slotMismatch);
                 }
-                if (result.isLocum && result.emailData && !result.workFirst) {
+                if (result.isLocum && result.emailData && !!result.workFirst) {
                     locumResults.push({
                         emailData: result.emailData,
                         isFirst: result.isFirst,

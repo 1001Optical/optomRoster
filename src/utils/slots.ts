@@ -22,6 +22,3 @@ export function calculateSlots(workMinutes: number): number {
   // break는 30분씩이므로 breakCount만큼 빼기
   return Math.max(0, totalSlots - breakCount);
 }
-
-
-
