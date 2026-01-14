@@ -7,6 +7,13 @@ interface ICacheEntry extends IResult { cachedAt: number }
 
 type SearchOptomIdType = (firstName: string, lastName: string, email?: string, externalId?: string) => Promise<IResult | undefined>;
 
+interface SearchResult {
+    optomId: number;
+    workHistory: string[];
+    externalUserId?: string | null;
+    email?: string | null;
+}
+
 const optomCache = new Map<string, ICacheEntry>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -76,7 +83,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
         }
 
-        const setAndReturn = (data: any) => {
+        const setAndReturn = (data: SearchResult) => {
             optomCache.set(cacheKey, { id: data.optomId, workHistory: data.workHistory, cachedAt: Date.now() });
 
             // 필요 시 externalUserId / email 업데이트
