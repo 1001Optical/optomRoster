@@ -64,9 +64,26 @@ export interface AppointmentConflict {
 }
 
 // ---- 외부 API 전송 함수 ----
-async function sendChangeToOptomateAPI(isScheduler: boolean = false): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
+// locationFilter: 처리할 locationId 제한 (없으면 전체)
+async function sendChangeToOptomateAPI(
+    isScheduler: boolean = false,
+    locationFilter?: number[]
+): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
     const db = getDB();
-    const result: ChangeLog[] = db.prepare(`SELECT * FROM CHANGE_LOG`).all() as ChangeLog[];
+    const raw: ChangeLog[] = db.prepare(`SELECT * FROM CHANGE_LOG`).all() as ChangeLog[];
+
+    const locSet = new Set(locationFilter ?? []);
+    const result = locSet.size === 0 ? raw : raw.filter((log) => {
+        if (!log.diffSummary) return false;
+        try {
+            const diff = JSON.parse(log.diffSummary);
+            const locNew = diff?.new?.locationId;
+            const locOld = diff?.old?.locationId;
+            return (locNew && locSet.has(locNew)) || (locOld && locSet.has(locOld));
+        } catch {
+            return false;
+        }
+    });
 
     if(result.length === 0) {
         return { slotMismatches: [], appointmentConflicts: [] };

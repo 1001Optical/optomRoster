@@ -111,11 +111,18 @@ export default function Home() {
                         console.log("Manual refresh completed successfully");
                         console.log("[PAGE] Refresh result:", refreshResult);
                         
+                        const selectedOptCode = selectOption
+                            ? OptomMap.find(v => v.LocationId === selectOption)?.OptCode
+                            : undefined;
+
                         // 타임슬롯 불일치 정보 저장 (빈 배열이어도 저장)
                         const slotMismatches = refreshResult?.slotMismatches || [];
+                        const filteredSlotMismatches = selectedOptCode
+                            ? slotMismatches.filter((s: SlotMismatch) => s.branch === selectedOptCode)
+                            : slotMismatches;
                         console.log(`[PAGE] Setting ${slotMismatches.length} slot mismatches:`, slotMismatches);
                         console.log(`[PAGE] Slot mismatches data:`, JSON.stringify(slotMismatches, null, 2));
-                        setSlotMismatches(slotMismatches);
+                        setSlotMismatches(filteredSlotMismatches);
                         if (slotMismatches.length > 0) {
                             console.warn(`⚠️ Found ${slotMismatches.length} slot mismatches`);
                         } else {
@@ -124,9 +131,12 @@ export default function Home() {
                         
                         // Appointment 충돌 정보 저장 (빈 배열이어도 저장)
                         const appointmentConflicts = refreshResult?.appointmentConflicts || [];
+                        const filteredAppointmentConflicts = selectedOptCode
+                            ? appointmentConflicts.filter((c: AppointmentConflict) => c.branch === selectedOptCode)
+                            : appointmentConflicts;
                         console.log(`[PAGE] Setting ${appointmentConflicts.length} appointment conflicts:`, appointmentConflicts);
                         console.log(`[PAGE] Appointment conflicts data:`, JSON.stringify(appointmentConflicts, null, 2));
-                        setAppointmentConflicts(appointmentConflicts);
+                        setAppointmentConflicts(filteredAppointmentConflicts);
                         if (appointmentConflicts.length > 0) {
                             console.warn(`❌ Found ${appointmentConflicts.length} appointment conflicts`);
                         } else {

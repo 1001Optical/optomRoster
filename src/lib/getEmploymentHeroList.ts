@@ -225,7 +225,10 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
             locationIds: syncedLocationIds
         });
 
-        const { slotMismatches, appointmentConflicts } = await sendChangeToOptomateAPI(isScheduler);
+        const { slotMismatches, appointmentConflicts } = await sendChangeToOptomateAPI(
+            isScheduler,
+            syncedLocationIds
+        );
 
         return { data: filterData, slotMismatches, appointmentConflicts }; // 실제 필터링된 데이터와 타임슬롯 불일치 정보, appointment 충돌 정보 반환
     } catch (error) {
