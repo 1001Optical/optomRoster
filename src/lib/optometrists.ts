@@ -9,6 +9,9 @@ type SearchOptomIdType = (firstName: string, lastName: string, email?: string, e
 
 interface SearchResult {
     optomId: number;
+    fristName: string;
+    lastName: string;
+    identifier: string;
     workHistory: string[];
     externalUserId?: string | null;
     email?: string | null;
@@ -73,12 +76,11 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             },
             body: JSON.stringify(body ?? {})
         });
-        return result;
+        return await result.json();
     };
 
     
     try {
-
         if (!apiUrl) {
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
         }
