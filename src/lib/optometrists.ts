@@ -68,15 +68,19 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
     };
 
     const search = async (path: string, body: Record<string, unknown>) => {
-        const result = await apiFetch(`${apiUrl}${path}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": API_TOKEN ?? ""
-            },
-            body: JSON.stringify(body ?? {})
-        });
-        return await result.json();
+        try {
+            const result = await apiFetch(`${apiUrl}${path}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": API_TOKEN ?? ""
+                },
+                body: JSON.stringify(body ?? {})
+            });
+            return result;
+        } catch (e) {
+            return null
+        }
     };
 
     
@@ -105,7 +109,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         if (externalId) {
             console.log(`Fetching optometrists by externalId: ${externalId}`);
             const result = await search("/api/optometrists/searchByExternalId", { externalUserId: externalId });
-            if (result.success && result.data?.optomId) {
+            if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
             }
         }
@@ -114,7 +118,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         if (email) {
             console.log(`Fetching optometrists by email: ${email}`);
             const result = await search("/api/optometrists/searchByEmail", { email });
-            if (result.success && result.data?.optomId) {
+            if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
             }
         }
@@ -122,7 +126,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         // 3) 이름
         console.log(`Fetching optometrists by name: ${firstName} ${lastName}`);
         const result = await search("/api/optometrists/search", { firstName, lastName });
-        if (result.success && result.data?.optomId) {
+        if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
         }
 
@@ -149,7 +153,6 @@ export const addWorkHistory: AddWorkHistory = async (id, branch) => {
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
         }
 
-        // search에 값 넣어 달라고 해야됨
         const url = `${apiUrl}/api/optometrists/optomWorkHistory`;
         console.log(`Fetching optometrists from: ${url}`);
 
