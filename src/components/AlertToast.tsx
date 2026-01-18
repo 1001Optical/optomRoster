@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { SlotMismatch, AppointmentConflict } from "@/lib/changeProcessor";
 import { X, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -12,22 +12,43 @@ interface AlertToastProps {
 // localStorage key for dismissed alerts
 const DISMISSED_ALERTS_KEY = "dismissedAlerts";
 
-// Generate unique ID for each alert
+// 주(week)의 시작일(일요일)을 계산하는 함수
+function getWeekStart(dateStr: string): string {
+    const dateMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (!dateMatch) return dateStr;
+    
+    const date = new Date(dateMatch[1] + 'T00:00:00');
+    const dayOfWeek = date.getDay(); // 0(일요일) ~ 6(토요일)
+    
+    // 일요일까지의 일수 계산
+    const daysToSunday = -dayOfWeek;
+    
+    // 해당 주의 일요일
+    const sunday = new Date(date);
+    sunday.setDate(date.getDate() + daysToSunday);
+    
+    // YYYY-MM-DD 형식으로 반환
+    const year = sunday.getFullYear();
+    const month = String(sunday.getMonth() + 1).padStart(2, '0');
+    const day = String(sunday.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+}
+
+// Generate unique ID for each alert (주별로 그룹화)
 function getAlertId(type: "slot" | "conflict", item: SlotMismatch | AppointmentConflict): string {
     if (type === "slot") {
         const mismatch = item as SlotMismatch;
-        // date에서 날짜 부분만 추출 (YYYY-MM-DD 형식으로 정규화)
-        const dateOnly = mismatch.date.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || mismatch.date;
-        // name에서 공백 제거 및 정규화
-        const normalizedName = mismatch.name.trim().replace(/\s+/g, ' ');
-        return `slot-${mismatch.branch}-${dateOnly}-${mismatch.optomId}-${normalizedName}`;
+        // 주의 시작일(일요일)을 계산하여 그룹화
+        const weekStart = getWeekStart(mismatch.date);
+        // 주와 브랜치만으로 그룹화 (같은 주, 같은 브랜치는 하나의 alert로)
+        return `slot-${mismatch.branch}-${weekStart}`;
     } else {
         const conflict = item as AppointmentConflict;
-        // date에서 날짜 부분만 추출 (YYYY-MM-DD 형식으로 정규화)
-        const dateOnly = conflict.date.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || conflict.date;
-        // name에서 공백 제거 및 정규화
-        const normalizedName = conflict.name.trim().replace(/\s+/g, ' ');
-        return `conflict-${conflict.branch}-${dateOnly}-${conflict.optomId}-${normalizedName}`;
+        // 주의 시작일(일요일)을 계산하여 그룹화
+        const weekStart = getWeekStart(conflict.date);
+        // 주와 브랜치만으로 그룹화 (같은 주, 같은 브랜치는 하나의 alert로)
+        return `conflict-${conflict.branch}-${weekStart}`;
     }
 }
 
@@ -90,46 +111,54 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
         setIsVisible(true);
     }, []);
 
-    // 중복 제거 및 X 버튼으로 삭제된 경고 필터링
-    const seenSlotIds = new Set<string>();
-    const visibleSlotMismatches = slotMismatches.filter(
-        item => {
+    // 주별로 그룹화하여 중복 제거 및 X 버튼으로 삭제된 경고 필터링
+    const { visibleSlotMismatches, slotMismatchesByWeek } = useMemo(() => {
+        const slotMismatchesByWeek = new Map<string, SlotMismatch[]>();
+        
+        slotMismatches.forEach(item => {
             const alertId = getAlertId("slot", item);
             
-            // 중복 제거
-            if (seenSlotIds.has(alertId)) {
-                return false;
-            }
-            seenSlotIds.add(alertId);
-            
-            // X 버튼으로 삭제된 경고는 필터링
+            // X 버튼으로 삭제된 경고는 건너뛰기
             if (deletedAlerts.has(alertId)) {
-                return false;
+                return;
             }
             
-            return true;
-        }
-    );
+            // 주별로 그룹화
+            if (!slotMismatchesByWeek.has(alertId)) {
+                slotMismatchesByWeek.set(alertId, []);
+            }
+            slotMismatchesByWeek.get(alertId)!.push(item);
+        });
+        
+        // 각 주별로 첫 번째 항목만 사용 (대표 항목)
+        const visibleSlotMismatches = Array.from(slotMismatchesByWeek.entries()).map(([alertId, items]) => items[0]);
+        
+        return { visibleSlotMismatches, slotMismatchesByWeek };
+    }, [slotMismatches, deletedAlerts]);
     
-    const seenConflictIds = new Set<string>();
-    const visibleAppointmentConflicts = appointmentConflicts.filter(
-        item => {
+    const { visibleAppointmentConflicts, appointmentConflictsByWeek } = useMemo(() => {
+        const appointmentConflictsByWeek = new Map<string, AppointmentConflict[]>();
+        
+        appointmentConflicts.forEach(item => {
             const alertId = getAlertId("conflict", item);
             
-            // 중복 제거
-            if (seenConflictIds.has(alertId)) {
-                return false;
-            }
-            seenConflictIds.add(alertId);
-            
-            // X 버튼으로 삭제된 경고는 필터링
+            // X 버튼으로 삭제된 경고는 건너뛰기
             if (deletedAlerts.has(alertId)) {
-                return false;
+                return;
             }
             
-            return true;
-        }
-    );
+            // 주별로 그룹화
+            if (!appointmentConflictsByWeek.has(alertId)) {
+                appointmentConflictsByWeek.set(alertId, []);
+            }
+            appointmentConflictsByWeek.get(alertId)!.push(item);
+        });
+        
+        // 각 주별로 첫 번째 항목만 사용 (대표 항목)
+        const visibleAppointmentConflicts = Array.from(appointmentConflictsByWeek.entries()).map(([alertId, items]) => items[0]);
+        
+        return { visibleAppointmentConflicts, appointmentConflictsByWeek };
+    }, [appointmentConflicts, deletedAlerts]);
 
     const hasAlerts = visibleSlotMismatches.length > 0 || visibleAppointmentConflicts.length > 0;
     
@@ -247,6 +276,16 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
             {visibleSlotMismatches.map((mismatch, index) => {
                 const alertId = getAlertId("slot", mismatch);
                 const isExpanded = expanded.has(alertId);
+                // 해당 주의 모든 항목 가져오기
+                const allItemsForWeek = slotMismatchesByWeek.get(alertId) || [mismatch];
+                const totalCount = allItemsForWeek.length;
+                
+                // 주의 시작일과 끝일 계산
+                const weekStart = getWeekStart(mismatch.date);
+                const weekStartDate = new Date(weekStart + 'T00:00:00');
+                const weekEndDate = new Date(weekStartDate);
+                weekEndDate.setDate(weekStartDate.getDate() + 6);
+                const weekEnd = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, '0')}-${String(weekEndDate.getDate()).padStart(2, '0')}`;
                 
                 return (
                     <div
@@ -258,7 +297,7 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                     >
                         {/* Expanded Card */}
                         {isExpanded && (
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg shadow-lg w-96">
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg shadow-lg w-96 max-h-96 overflow-y-auto">
                                 <div className="p-4">
                                     <div className="flex items-start gap-3">
                                         <div className="flex-shrink-0 mt-0.5">
@@ -269,9 +308,11 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-start justify-between gap-2">
                                                 <div>
-                                                    <h3 className="text-sm font-medium text-amber-800">Slot Mismatch</h3>
+                                                    <h3 className="text-sm font-medium text-amber-800">
+                                                        Slot Mismatch {totalCount > 1 && `(${totalCount} items)`}
+                                                    </h3>
                                                     <p className="text-xs text-amber-600 mt-0.5">
-                                                        {mismatch.branchName} ({mismatch.branch})
+                                                        {mismatch.branchName} ({mismatch.branch}) - Week of {weekStart}
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-1">
@@ -291,14 +332,18 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="mt-2 text-sm text-amber-700 space-y-1">
-                                                <p className="text-xs">
-                                                    {mismatch.date} - {mismatch.name}
-                                                    {mismatch.optomId > 0 && ` (OptomId: ${mismatch.optomId})`}
-                                                </p>
-                                                <p className="text-xs text-amber-600">
-                                                    EH: {mismatch.employmentHeroSlots} slots | Optomate: {mismatch.optomateSlots} slots
-                                                </p>
+                                            <div className="mt-2 text-sm text-amber-700 space-y-2">
+                                                {allItemsForWeek.map((item, idx) => (
+                                                    <div key={idx} className="border-b border-amber-200 pb-2 last:border-0 last:pb-0">
+                                                        <p className="text-xs font-medium">
+                                                            {item.date} - {item.name}
+                                                            {item.optomId > 0 && ` (OptomId: ${item.optomId})`}
+                                                        </p>
+                                                        <p className="text-xs text-amber-600">
+                                                            EH: {item.employmentHeroSlots} slots | Optomate: {item.optomateSlots} slots
+                                                        </p>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
@@ -316,9 +361,14 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                                 <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                                 </svg>
+                                {totalCount > 1 && (
+                                    <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                                        {totalCount}
+                                    </span>
+                                )}
                                 {/* Tooltip on hover */}
                                 <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                    {mismatch.branchName} - {mismatch.date}
+                                    {mismatch.branchName} - Week of {weekStart} {totalCount > 1 && `(${totalCount} items)`}
                                 </div>
                             </button>
                         )}
@@ -330,6 +380,16 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
             {visibleAppointmentConflicts.map((conflict, index) => {
                 const alertId = getAlertId("conflict", conflict);
                 const isExpanded = expanded.has(alertId);
+                // 해당 주의 모든 항목 가져오기
+                const allItemsForWeek = appointmentConflictsByWeek.get(alertId) || [conflict];
+                const totalCount = allItemsForWeek.length;
+                
+                // 주의 시작일과 끝일 계산
+                const weekStart = getWeekStart(conflict.date);
+                const weekStartDate = new Date(weekStart + 'T00:00:00');
+                const weekEndDate = new Date(weekStartDate);
+                weekEndDate.setDate(weekStartDate.getDate() + 6);
+                const weekEnd = `${weekEndDate.getFullYear()}-${String(weekEndDate.getMonth() + 1).padStart(2, '0')}-${String(weekEndDate.getDate()).padStart(2, '0')}`;
                 
                 return (
                     <div
@@ -341,7 +401,7 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                     >
                         {/* Expanded Card */}
                         {isExpanded && (
-                            <div className="bg-red-50 border border-red-200 rounded-lg shadow-lg w-96">
+                            <div className="bg-red-50 border border-red-200 rounded-lg shadow-lg w-96 max-h-96 overflow-y-auto">
                                 <div className="p-4">
                                     <div className="flex items-start gap-3">
                                         <div className="flex-shrink-0 mt-0.5">
@@ -352,9 +412,11 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-start justify-between gap-2">
                                                 <div>
-                                                    <h3 className="text-sm font-medium text-red-800">Appointment Conflict</h3>
+                                                    <h3 className="text-sm font-medium text-red-800">
+                                                        Appointment Conflict {totalCount > 1 && `(${totalCount} items)`}
+                                                    </h3>
                                                     <p className="text-xs text-red-600 mt-0.5">
-                                                        {conflict.branchName} ({conflict.branch})
+                                                        {conflict.branchName} ({conflict.branch}) - Week of {weekStart}
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-1">
@@ -374,18 +436,22 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="mt-2 text-sm text-red-700 space-y-1">
-                                                <p className="text-xs">
-                                                    {conflict.date} - {conflict.name}
-                                                    {conflict.optomId > 0 && ` (OptomId: ${conflict.optomId})`}
-                                                </p>
-                                                <p className="text-xs text-red-600">
-                                                    Time: {conflict.startTime.split('T')[1].substring(0, 5)} - {conflict.endTime.split('T')[1].substring(0, 5)} | 
-                                                    {conflict.changeType === 'roster_deleted' ? ' Deleted' : ' Changed'}
-                                                </p>
-                                                <p className="text-xs text-red-600">
-                                                    Email: {conflict.email}
-                                                </p>
+                                            <div className="mt-2 text-sm text-red-700 space-y-2">
+                                                {allItemsForWeek.map((item, idx) => (
+                                                    <div key={idx} className="border-b border-red-200 pb-2 last:border-0 last:pb-0">
+                                                        <p className="text-xs font-medium">
+                                                            {item.date} - {item.name}
+                                                            {item.optomId > 0 && ` (OptomId: ${item.optomId})`}
+                                                        </p>
+                                                        <p className="text-xs text-red-600">
+                                                            Time: {item.startTime.split('T')[1].substring(0, 5)} - {item.endTime.split('T')[1].substring(0, 5)} | 
+                                                            {item.changeType === 'roster_deleted' ? ' Deleted' : ' Changed'}
+                                                        </p>
+                                                        <p className="text-xs text-red-600">
+                                                            Email: {item.email}
+                                                        </p>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
@@ -403,9 +469,14 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
                                 <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                                 </svg>
+                                {totalCount > 1 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                                        {totalCount}
+                                    </span>
+                                )}
                                 {/* Tooltip on hover */}
                                 <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                    {conflict.branchName} - {conflict.date}
+                                    {conflict.branchName} - Week of {weekStart} {totalCount > 1 && `(${totalCount} items)`}
                                 </div>
                             </button>
                         )}

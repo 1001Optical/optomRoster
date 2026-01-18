@@ -46,8 +46,9 @@ process_store() {
     
     echo "[$timestamp] [$store_num/$total_stores] Starting store: $store"
     
-    # Call refresh API with branch parameter and scheduler flag
-    response=$(curl -s -w "\n%{http_code}" "$api_url/api/roster/refresh?from=$start_date&to=$end_date&branch=$store&scheduler=true")
+    # Call refresh API with branch parameter, scheduler flag, and skipEmail flag
+    # skipEmail=true: 각 스토어 처리 시 메일을 보내지 않고, 모든 스토어 처리 완료 후 한 번에 보냄
+    response=$(curl -s -w "\n%{http_code}" "$api_url/api/roster/refresh?from=$start_date&to=$end_date&branch=$store&scheduler=true&skipEmail=true")
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
     
@@ -112,5 +113,26 @@ echo "Store-by-Store Sync Completed"
 echo "=========================================="
 echo "Finished at: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "Total stores processed: $total_stores"
+echo "=========================================="
+echo ""
+
+# 모든 스토어 처리 완료 후, 모든 충돌을 모아서 한 번에 메일 전송
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Sending consolidated conflict email (if any conflicts exist)..."
+conflict_response=$(curl -s -w "\n%{http_code}" "$api_url/api/roster/send-conflict-email")
+conflict_http_code=$(echo "$conflict_response" | tail -n1)
+conflict_body=$(echo "$conflict_response" | sed '$d')
+
+if [ "$conflict_http_code" -eq 200 ]; then
+    conflicts_count=$(echo "$conflict_body" | grep -o '"conflictsCount":[0-9]*' | grep -o '[0-9]*')
+    if [ -n "$conflicts_count" ] && [ "$conflicts_count" -gt 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Consolidated conflict email sent: $conflicts_count conflict(s)"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ℹ️  No conflicts found, no email sent"
+    fi
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️  Warning: Failed to send conflict email (HTTP $conflict_http_code)"
+    echo "  Response: $conflict_body"
+fi
+echo ""
 echo "=========================================="
 

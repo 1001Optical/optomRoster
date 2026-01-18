@@ -65,9 +65,11 @@ export interface AppointmentConflict {
 
 // ---- 외부 API 전송 함수 ----
 // locationFilter: 처리할 locationId 제한 (없으면 전체)
-async function sendChangeToOptomateAPI(
+// skipEmail: 메일 발송을 건너뛸지 여부 (스토어별 처리 시 true로 설정하여 나중에 한 번에 보낼 수 있음)
+export async function sendChangeToOptomateAPI(
     isScheduler: boolean = false,
-    locationFilter?: number[]
+    locationFilter?: number[],
+    skipEmail: boolean = false
 ): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
     const db = getDB();
     const raw: ChangeLog[] = db.prepare(`SELECT * FROM CHANGE_LOG`).all() as ChangeLog[];
@@ -170,8 +172,8 @@ async function sendChangeToOptomateAPI(
     const branchMismatches = await compareBranchTotalSlots(db);
     slotMismatches.push(...branchMismatches);
 
-    // Appointment 충돌이 있고 스케줄러인 경우 메일 전송
-    if (appointmentConflicts.length > 0 && isScheduler) {
+    // Appointment 충돌이 있고 스케줄러인 경우 메일 전송 (skipEmail이 false인 경우에만)
+    if (appointmentConflicts.length > 0 && isScheduler && !skipEmail) {
         await sendAppointmentConflictEmail(appointmentConflicts);
     }
 
@@ -180,8 +182,9 @@ async function sendChangeToOptomateAPI(
 
 /**
  * Appointment 충돌 메일 전송 (스케줄러용) - Gmail API 사용
+ * 외부에서도 호출 가능하도록 export
  */
-async function sendAppointmentConflictEmail(conflicts: AppointmentConflict[]): Promise<void> {
+export async function sendAppointmentConflictEmail(conflicts: AppointmentConflict[]): Promise<void> {
     try {
         // Gmail API 설정 확인
         if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET || !process.env.GMAIL_SENDER) {

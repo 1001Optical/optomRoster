@@ -22,6 +22,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const branch = searchParams.get("branch");
         const isScheduler = searchParams.get("scheduler") === "true"; // 스케줄러인지 확인
         const isManual = searchParams.get("manual") === "true"; // UI 수동 호출 여부 (안전장치용)
+        const skipEmail = searchParams.get("skipEmail") === "true"; // 메일 발송을 건너뛸지 여부 (스토어별 처리 시 사용)
 
         if(range){
             const todayDate = new Date();
@@ -132,7 +133,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             }
         }
 
-        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch, isScheduler);
+        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch, isScheduler, skipEmail);
 
         return NextResponse.json(
             {

@@ -267,6 +267,8 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
  * 오늘 이전의 모든 데이터를 모든 브랜치에서 삭제
  * 오늘 데이터는 보존
  * 매일 5시에 실행되는 store-by-store-sync 스크립트에서 사용
+ * 
+ * 클린업 시 생성된 CHANGE_LOG는 삭제하여 옵토메이트로 전송되지 않도록 함
  */
 export function deletePastDataForAllBranches(): number {
     const db = getDB();
@@ -280,11 +282,38 @@ export function deletePastDataForAllBranches(): number {
         // 오늘 날짜의 시작 시간 (00:00:00Z) - 이전의 모든 데이터 삭제
         const todayStart = `${todayStr}T00:00:00Z`;
         
+        // 클린업 시작 시간 기록 (트리거로 생성된 CHANGE_LOG를 식별하기 위해)
+        const cleanupStartTime = new Date().toISOString();
+        
+        // 삭제할 rosterId 목록 미리 조회 (나중에 CHANGE_LOG 삭제에 사용)
+        const rosterIdsToDelete = db.prepare(`
+            SELECT id FROM ROSTER
+            WHERE startTime < ?
+        `).all(todayStart) as Array<{id: number}>;
+        
+        const rosterIdList = rosterIdsToDelete.map(r => r.id);
+        
         // 오늘 이전의 모든 데이터 삭제 (모든 브랜치)
         const deleteResult = db.prepare(`
             DELETE FROM ROSTER
             WHERE startTime < ?
         `).run(todayStart);
+        
+        // 클린업으로 인해 생성된 CHANGE_LOG 삭제 (옵토메이트로 전송되지 않도록)
+        // 삭제 직후 생성된 roster_deleted 타입의 CHANGE_LOG를 삭제
+        if (rosterIdList.length > 0) {
+            const placeholders = rosterIdList.map(() => '?').join(',');
+            const cleanupLogDeleteResult = db.prepare(`
+                DELETE FROM CHANGE_LOG
+                WHERE rosterId IN (${placeholders})
+                  AND changeType = 'roster_deleted'
+                  AND whenDetected >= ?
+            `).run(...rosterIdList, cleanupStartTime);
+            
+            if (cleanupLogDeleteResult.changes > 0) {
+                console.log(`[CLEANUP] Deleted ${cleanupLogDeleteResult.changes} CHANGE_LOG entries created during cleanup (to prevent Optomate transmission)`);
+            }
+        }
         
         if (deleteResult.changes > 0) {
             console.log(`[CLEANUP] Deleted ${deleteResult.changes} roster entries before today (${todayStr}) for all branches`);
