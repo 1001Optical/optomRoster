@@ -1144,8 +1144,8 @@ function parseTimeToMinutes(timeStr: string): number | null {
 }
 
 // ---- Export ----
+// sendChangeToOptomateAPI는 이미 함수 선언부에서 export됨
 export {
-    sendChangeToOptomateAPI,
     callOptomateAPI,
     getBranchTotalSlots,
 };
