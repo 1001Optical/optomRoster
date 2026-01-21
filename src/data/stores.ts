@@ -10,7 +10,7 @@ export const OptomMap =[
     { "LocationId": 315785, "StoreName": "Macquarie", "State": "NSW", "OptCode": "MQU" },
     { "LocationId": 313210, "StoreName": "Parramatta", "State": "NSW", "OptCode": "PA1" },
     { "LocationId": 313212, "StoreName": "Penrith", "State": "NSW", "OptCode": "PEN" },
-    { "LocationId": 315787, "StoreName": "Topryde", "State": "NSW", "OptCode": "TOP" },
+    { "LocationId": 315787, "StoreName": "Top Ryde", "State": "NSW", "OptCode": "TOP" },
 
     { "LocationId": 315780, "StoreName": "Box Hill", "State": "VIC", "OptCode": "BOH" },
     { "LocationId": 315779, "StoreName": "Doncaster", "State": "VIC", "OptCode": "DON" },

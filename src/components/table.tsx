@@ -46,34 +46,41 @@ const Table = React.memo(({ data = {}, loading }: TableProps) => {
                 <span className="sr-only">Loading...</span>
               </div>
             </td>
-          </tr> : Object.keys(data).length ? Object.keys(data).map(key => (
-              <tr key={key+"store"}>
-                <td
-                    key={key}
-                    className="py-2 px-3 border-b border-gray-200 text-center w-[90px] h-[52px]"
-                >
-                  {OptomMap.find(v => v.LocationId === Number(key))?.StoreName}
-                </td>
-                {daysOfWeek.map((_, dayIndex) => (
-                    <td
-                        key={dayIndex}
-                        className={"w-[90px] h-[52px]"}
-                    >
-                      <div className={"text-center flex flex-col justify-start items-start w-full h-full border-b border-gray-200"}>
-                      {
-                        data[key.toString()][dayIndex]?.map((v,i) => (
-                            <div key={i} className={cn("py-2 px-3 w-full", v.name ? "" : "bg-red-300")}>
-                              {v.name || ''} <br/>
-                              {v.start || ''}-{v.end || ''}
-                            </div>
+          </tr> : Object.keys(data).length ? 
+          // OptomMap 순서대로 스토어를 표시
+          OptomMap
+            .filter(store => data[store.LocationId.toString()]) // data에 있는 스토어만 필터링
+            .map(store => {
+              const key = store.LocationId.toString();
+              return (
+                <tr key={key+"store"}>
+                  <td
+                      key={key}
+                      className="py-2 px-3 border-b border-gray-200 text-center w-[90px] h-[52px]"
+                  >
+                    {store.StoreName}
+                  </td>
+                  {daysOfWeek.map((_, dayIndex) => (
+                      <td
+                          key={dayIndex}
+                          className={"w-[90px] h-[52px]"}
+                      >
+                        <div className={"text-center flex flex-col justify-start items-start w-full h-full border-b border-gray-200"}>
+                        {
+                          data[key][dayIndex]?.map((v,i) => (
+                              <div key={i} className={cn("py-2 px-3 w-full", v.name ? "" : "bg-red-300")}>
+                                {v.name || ''} <br/>
+                                {v.start || ''}-{v.end || ''}
+                              </div>
+                            )
                           )
-                        )
-                      }
-                      </div>
-                    </td>
-                ))}
-              </tr>
-          )) : <tr>
+                        }
+                        </div>
+                      </td>
+                  ))}
+                </tr>
+              );
+            }) : <tr>
             <td colSpan={8} className={'w-full h-full'}>
               <div className={"flex justify-center items-center h-[580px]"}>
                 <p className={"text-gray-400"}>EMPTY DATA</p>
