@@ -413,22 +413,40 @@ async function processOptomData(
         let isFirst = false;
         let username = undefined;
         const email = optomData.email;
+        const externalId = optomData.employeeId.toString();
         
         // 이름으로 먼저 검색, 실패 시 email로 재검색
-        const optomInfo = await searchOptomId(optomData.firstName, optomData.lastName, email);
+        // 검색 실패 시에도 계정 생성을 시도하도록 에러를 catch
+        let optomInfo: { id: number; workHistory: string[] } | undefined = undefined;
+        try {
+            optomInfo = await searchOptomId(optomData.firstName, optomData.lastName, email, externalId);
+        } catch (searchError) {
+            console.warn(`[PROCESS OPTOM] Search failed for ${optomData.firstName} ${optomData.lastName}, will attempt to create account:`, searchError);
+            // 검색 실패해도 계속 진행 (계정 생성 시도)
+        }
 
         let id = optomInfo?.id;
 
         console.log(`optomId: ${id}`)
 
-        // 검색 후 아이디가 없을 시 생성로직
-        if(!optomInfo?.id) {
+        // 검색 후 아이디가 없을 시 생성로직 (검색 실패 또는 결과 없음)
+        if(!id) {
             try {
-                const info = await createOptomAccount(optomData.id.toString(), optomData.firstName, optomData.lastName, email);
+                // id가 없으면 employeeId를 사용 (둘 다 Employment Hero 식별자)
+                // id는 roster ID, employeeId는 employee ID
+                const externalId = optomData.id ?? optomData.employeeId;
+                if (!externalId) {
+                    throw new Error(`Cannot create account: both id and employeeId are missing for ${optomData.firstName} ${optomData.lastName}`);
+                }
+                
+                console.log(`[PROCESS OPTOM] Creating new account for ${optomData.firstName} ${optomData.lastName} (externalId: ${externalId})`);
+                const info = await createOptomAccount(externalId.toString(), optomData.firstName, optomData.lastName, email);
                 id = info.id;
                 username = info.username;
                 isFirst = true;
+                console.log(`[PROCESS OPTOM] Account created successfully: optomId=${id}, username=${username}`);
             } catch (accountError) {
+                console.error(`[PROCESS OPTOM] Failed to create account for ${optomData.firstName} ${optomData.lastName}:`, accountError);
                 throw accountError;
             }
         }

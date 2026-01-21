@@ -1,7 +1,8 @@
 import {createSecret} from "@/utils/crypto";
 import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
+import {apiFetch} from "@/services/apiFetch";
 
-const API_TOKEN = process.env.API_TOKEN
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
 
 const CheckError = (text:string) => {
     const re = /\b(IDENTIFIER|USERNAME)\b/i; // 1번 패턴
@@ -81,13 +82,14 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             };
 
             console.log("BODY: ", body)
+            console.log("Token: ", API_TOKEN)
 
             try {
-                const res = await fetch(`${apiUrl}/api/optometrists/createUser`, {
+                const result = await apiFetch(`${apiUrl}/api/optometrists/createUser`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        "Authorization": API_TOKEN ?? ""
+                        "Authorization": API_TOKEN ? `Bearer ${API_TOKEN}` : ""
                     },
                     body: JSON.stringify(body)
                 });
@@ -97,7 +99,6 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
                 //     throw new Error(`API request failed: ${res.status}`);
                 // }
 
-                const result = await res.json();
                 console.log(result)
                 console.log(`API response:`, { success: result.success, error: result.error });
 

@@ -46,11 +46,12 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             if (!apiUrl) {
                 throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
             }
+            console.log(`API_TOKEN: ${API_TOKEN}`);
             const response = await apiFetch(`${apiUrl}/api/optometrist/${optomId}`, {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": API_TOKEN ?? ""
+                    "Authorization": API_TOKEN ? `Bearer ${API_TOKEN}` : ""
                 },
                 body: JSON.stringify({
                     externalUserId: payload.externalUserId ?? null,
@@ -108,7 +109,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         // 1) ExternalId 우선
         if (externalId) {
             console.log(`Fetching optometrists by externalId: ${externalId}`);
-            const result = await search("/api/optometrists/searchByExternalId", { externalUserId: externalId });
+            const result = await search("/api/optometrists/searchByExternaUserId", { externalUserId: externalId });
             if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
             }
