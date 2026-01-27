@@ -66,6 +66,8 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
             [...new Set(incoming.map(v => v.locationId).filter(id => id != null))];
         
         // 0) 과거 데이터 삭제: 동기화 시작 날짜 이전의 모든 데이터 삭제
+        // [수정] 8~14일 동기화 시 1~7일 데이터가 사라지는 문제를 해결하기 위해 과거 데이터 삭제 로직 제거
+        /*
         if (syncedLocationIds.length > 0) {
             const locationPlaceholders = syncedLocationIds.map(() => '?').join(',');
             const deletePastResult = db.prepare(`
@@ -87,6 +89,20 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
             if (deletePastResult.changes > 0) {
                 console.log(`[SYNC] Deleted ${deletePastResult.changes} past roster entries before ${scope.start} (all locations)`);
             }
+        }
+        */
+
+        // 0-1) 과거 데이터 삭제 (옵션): 오늘 날짜 기준으로 한 달 이상 지난 데이터만 정리 (DB 최적화용)
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        const oneMonthAgoISO = oneMonthAgo.toISOString().split('.')[0] + 'Z';
+        
+        const cleanupResult = db.prepare(`
+            DELETE FROM ROSTER WHERE startTime < ?
+        `).run(oneMonthAgoISO);
+        
+        if (cleanupResult.changes > 0) {
+            console.log(`[SYNC] Cleaned up ${cleanupResult.changes} old roster entries older than ${oneMonthAgoISO}`);
         }
         
         // 1) UPSERT: 신규 → INSERT, 기존 → UPDATE
