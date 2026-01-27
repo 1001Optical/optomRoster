@@ -110,23 +110,17 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        // 수동 호출 안전장치: 브랜치 미지정(=올브랜치) 방지 + 기간 상한
-        if (isManual && !branch) {
-            return NextResponse.json(
-                {
-                    message: "Manual sync requires branch parameter (prevents syncing all branches unintentionally).",
-                },
-                { status: 400 }
-            );
-        }
-
+        // 수동 호출 안전장치: 기간 상한 (브랜치 미지정 시에는 여전히 주의 필요)
         if (isManual) {
             const diffDays = Math.floor((toDateObj.getTime() - fromDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-            const MAX_DAYS = 21; // 수동 버튼으로는 최대 3주까지만
+            
+            // 브랜치가 지정된 경우 21일, 전체 브랜치인 경우 14일로 상한 설정
+            const MAX_DAYS = branch ? 21 : 14; 
+            
             if (diffDays > MAX_DAYS) {
                 return NextResponse.json(
                     {
-                        message: `Manual sync range too large: max ${MAX_DAYS} days allowed`,
+                        message: `Manual sync range too large: max ${MAX_DAYS} days allowed ${!branch ? "for all branches" : ""}`,
                     },
                     { status: 400 }
                 );
