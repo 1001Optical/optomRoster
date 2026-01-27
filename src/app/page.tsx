@@ -38,7 +38,7 @@ function getCurrentWeekRange(): DateRange {
 
 export default function Home() {
     const [res, setRes] = useState<I1001TableType>({})
-    const [selectOption, setSelectOption] = useState<number | undefined>()
+    const [selectOption, setSelectOption] = useState<number | string | undefined>()
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [slotMismatches, setSlotMismatches] = useState<SlotMismatch[]>([]);
@@ -49,7 +49,7 @@ export default function Home() {
     useEffect(() => {
         console.log("=== Loading Roster Data ===");
         console.log(`Selected week: ${selectedWeek?.from} to ${selectedWeek?.to}`);
-        console.log(`Selected location: ${selectOption}`);
+        console.log(`Selected option: ${selectOption}`);
 
         setLoading(true);
         setError(null);
@@ -76,6 +76,13 @@ export default function Home() {
             });
     }, [selectOption, selectedWeek]);
 
+  // 주(State) 목록 추출
+  const states = Array.from(new Set(OptomMap.map(v => v.State))).sort();
+  const selectItems = [
+      ...states.map(s => ({ key: s, value: `[State] ${s}` })),
+      ...OptomMap.map(v => ({ key: v.LocationId, value: v.StoreName }))
+  ];
+
   return (
     <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center">
       <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
@@ -85,9 +92,7 @@ export default function Home() {
           <div className="flex justify-end gap-3">
             <IooISelect
                 selectItem={selectOption}
-                items={OptomMap.map(v => {
-                    return {key: v.LocationId, value: v.StoreName}
-                })}
+                items={selectItems}
                 onSelect={(key) => {
                     setSelectOption(key)
                 }}
@@ -111,37 +116,29 @@ export default function Home() {
                         console.log("Manual refresh completed successfully");
                         console.log("[PAGE] Refresh result:", refreshResult);
                         
-                        const selectedOptCode = selectOption
-                            ? OptomMap.find(v => v.LocationId === selectOption)?.OptCode
-                            : undefined;
+                        let selectedOptCodes: string[] = [];
+                        if (typeof selectOption === 'number') {
+                            const code = OptomMap.find(v => v.LocationId === selectOption)?.OptCode;
+                            if (code) selectedOptCodes.push(code);
+                        } else if (typeof selectOption === 'string') {
+                            selectedOptCodes = OptomMap.filter(v => v.State === selectOption).map(v => v.OptCode);
+                        }
 
                         // 타임슬롯 불일치 정보 저장 (빈 배열이어도 저장)
                         const slotMismatches = refreshResult?.slotMismatches || [];
-                        const filteredSlotMismatches = selectedOptCode
-                            ? slotMismatches.filter((s: SlotMismatch) => s.branch === selectedOptCode)
+                        const filteredSlotMismatches = selectedOptCodes.length > 0
+                            ? slotMismatches.filter((s: SlotMismatch) => selectedOptCodes.includes(s.branch))
                             : slotMismatches;
                         console.log(`[PAGE] Setting ${slotMismatches.length} slot mismatches:`, slotMismatches);
-                        console.log(`[PAGE] Slot mismatches data:`, JSON.stringify(slotMismatches, null, 2));
                         setSlotMismatches(filteredSlotMismatches);
-                        if (slotMismatches.length > 0) {
-                            console.warn(`⚠️ Found ${slotMismatches.length} slot mismatches`);
-                        } else {
-                            console.log(`[PAGE] No slot mismatches found`);
-                        }
                         
                         // Appointment 충돌 정보 저장 (빈 배열이어도 저장)
                         const appointmentConflicts = refreshResult?.appointmentConflicts || [];
-                        const filteredAppointmentConflicts = selectedOptCode
-                            ? appointmentConflicts.filter((c: AppointmentConflict) => c.branch === selectedOptCode)
+                        const filteredAppointmentConflicts = selectedOptCodes.length > 0
+                            ? appointmentConflicts.filter((c: AppointmentConflict) => selectedOptCodes.includes(c.branch))
                             : appointmentConflicts;
                         console.log(`[PAGE] Setting ${appointmentConflicts.length} appointment conflicts:`, appointmentConflicts);
-                        console.log(`[PAGE] Appointment conflicts data:`, JSON.stringify(appointmentConflicts, null, 2));
                         setAppointmentConflicts(filteredAppointmentConflicts);
-                        if (appointmentConflicts.length > 0) {
-                            console.warn(`❌ Found ${appointmentConflicts.length} appointment conflicts`);
-                        } else {
-                            console.log(`[PAGE] No appointment conflicts found`);
-                        }
                         
                         // 데이터 다시 로드
                         const newData = await getList(selectedWeek?.from, selectedWeek?.to, selectOption);

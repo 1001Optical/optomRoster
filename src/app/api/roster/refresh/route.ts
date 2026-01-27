@@ -20,6 +20,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         let toDate = searchParams.get("to") ?? "";
         const range = searchParams.get("range");
         const branch = searchParams.get("branch");
+        const state = searchParams.get("state");
         const isScheduler = searchParams.get("scheduler") === "true"; // 스케줄러인지 확인
         const isManual = searchParams.get("manual") === "true"; // UI 수동 호출 여부 (안전장치용)
         const skipEmail = searchParams.get("skipEmail") === "true"; // 메일 발송을 건너뛸지 여부 (스토어별 처리 시 사용)
@@ -114,20 +115,20 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         if (isManual) {
             const diffDays = Math.floor((toDateObj.getTime() - fromDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
             
-            // 브랜치가 지정된 경우 21일, 전체 브랜치인 경우 14일로 상한 설정
-            const MAX_DAYS = branch ? 21 : 14; 
+            // 특정 브랜치 또는 특정 주(state)가 지정된 경우 21일, 전체 브랜치인 경우 14일로 상한 설정
+            const MAX_DAYS = (branch || state) ? 21 : 14; 
             
             if (diffDays > MAX_DAYS) {
                 return NextResponse.json(
                     {
-                        message: `Manual sync range too large: max ${MAX_DAYS} days allowed ${!branch ? "for all branches" : ""}`,
+                        message: `Manual sync range too large: max ${MAX_DAYS} days allowed ${(!branch && !state) ? "for all branches" : ""}`,
                     },
                     { status: 400 }
                 );
             }
         }
 
-        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch, isScheduler, skipEmail);
+        const result = await getEmploymentHeroList(normalizedFromDate, normalizedToDate, branch, isScheduler, skipEmail, state);
 
         return NextResponse.json(
             {

@@ -1,16 +1,16 @@
 import {RiArrowDropDownLine} from "react-icons/ri"
 import {useState, useRef, useEffect} from "react";
 
-type ItemType = { key: number; value: string }
+type ItemType = { key: number | string; value: string }
 
 interface ISelectProps {
-    selectItem?: number;
+    selectItem?: number | string;
     items: ItemType[];
-    onSelect: (key?: number) => void
+    onSelect: (key?: number | string) => void
 }
 interface IOptionProps {
     item: ItemType;
-    onClick: (key: number) => void
+    onClick: (key: number | string) => void
 }
 
 const IooIOption = ({item, onClick}: IOptionProps) => {
@@ -46,7 +46,7 @@ const IooISelect = ({selectItem, items = [], onSelect}: ISelectProps) => {
             className={"w-[212px] flex justify-between items-center border border-gray-300 px-3 py-1 gap-2 rounded-xl cursor-pointer "}
             onClick={() => setIsOpen(!isOpen)}
         >
-            <p>{selectItem ? items.find(v => v.key === selectItem)?.value : "Select Store"}</p>
+            <p>{selectItem !== undefined ? items.find(v => v.key === selectItem)?.value : "Select Store"}</p>
             <RiArrowDropDownLine />
         </div>
         {

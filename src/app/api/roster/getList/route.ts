@@ -11,6 +11,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const fromDate = searchParams.get("from");
         const toDate = searchParams.get("to");
         const locationId = searchParams.get("locationId");
+        const locationIdsStr = searchParams.get("locationIds"); // 쉼표로 구분된 ID 목록
 
         if(!fromDate || !toDate) {
             console.error("Missing required parameters: from and to dates");
@@ -55,32 +56,45 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const toDateNextDayObj = new Date(Date.UTC(year, month - 1, day + 1));
         const toDateNextDayStr = toDateNextDayObj.toISOString().split('T')[0];
 
-        const result: unknown[] = db.prepare(
-            `SELECT id,
-                    employeeId,
-                    firstName,
-                    lastName,
-                    locationId,
-                    locationName,
-                    startTime,
-                    endTime,
-                    email,
-                    -- 파생값
-                    date(startTime)                            AS day,       -- 'YYYY-MM-DD'
-                    CAST(strftime('%w', startTime) AS INTEGER) AS dow,       -- 0=Sun..6=Sat
-                    substr(startTime, 12, 5)                   AS hhmmStart, -- 'HH:MM'
-                    substr(endTime, 12, 5)                     AS hhmmEnd
+        // locationId 또는 locationIds 처리
+        let locationIds: number[] = [];
+        if (locationId) {
+            locationIds.push(parseInt(locationId));
+        } else if (locationIdsStr) {
+            locationIds = locationIdsStr.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        }
 
-             FROM ROSTER
-             WHERE startTime >= $from -- 예: '2025-09-14T00:00:00Z'
-               AND endTime < $to     -- 다음 날 00:00:00Z (토요일 23:59:59까지 포함)
-               AND ($locationId IS NULL OR locationId = $locationId)
-            `
-        ).all({
+        let query = `SELECT id,
+                            employeeId,
+                            firstName,
+                            lastName,
+                            locationId,
+                            locationName,
+                            startTime,
+                            endTime,
+                            email,
+                            date(startTime)                            AS day,
+                            CAST(strftime('%w', startTime) AS INTEGER) AS dow,
+                            substr(startTime, 12, 5)                   AS hhmmStart,
+                            substr(endTime, 12, 5)                     AS hhmmEnd
+                     FROM ROSTER
+                     WHERE startTime >= $from
+                       AND endTime < $to`;
+
+        const params: any = {
             from: `${fromDateOnly}T00:00:00Z`,
-            to: `${toDateNextDayStr}T00:00:00Z`,  // 다음 날 00:00:00Z로 설정하여 토요일 전체 포함
-            locationId: locationId,
-        });
+            to: `${toDateNextDayStr}T00:00:00Z`
+        };
+
+        if (locationIds.length > 0) {
+            const placeholders = locationIds.map((_, i) => `$loc${i}`).join(',');
+            query += ` AND locationId IN (${placeholders})`;
+            locationIds.forEach((id, i) => {
+                params[`loc${i}`] = id;
+            });
+        }
+
+        const result: unknown[] = db.prepare(query).all(params);
 
         return NextResponse.json({
             message: 'Success',

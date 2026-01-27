@@ -16,9 +16,9 @@ function getCurrentWeekRange(): { from: Date; to: Date } {
     return { from: sunday, to: saturday };
 }
 
-const refresh = async (start?: Date, end?: Date, locationId?: number) => {
+const refresh = async (start?: Date, end?: Date, selectOption?: number | string) => {
     console.log("=== Refreshing Roster Data ===");
-    console.log(`Start: ${start}, End: ${end}, LocationId: ${locationId}`);
+    console.log(`Start: ${start}, End: ${end}, SelectOption: ${selectOption}`);
     
     try {
         const fallbackRange = getCurrentWeekRange();
@@ -26,22 +26,21 @@ const refresh = async (start?: Date, end?: Date, locationId?: number) => {
         const fromDate = toDateOnly(start ?? fallbackRange.from);
         const toDate = toDateOnly(end ?? fallbackRange.to);
         
-        // LocationId를 OptCode로 변환 (branch 파라미터용)
-        const branch = locationId 
-            ? OptomMap.find(v => v.LocationId === locationId)?.OptCode 
-            : undefined;
-
-        // ⚠️ 안전장치: UI 수동 싱크에서 브랜치 미지정 시 올브랜치 쿼리가 발생하므로 막음
-        if (!branch) {
-            throw new Error("Please select a store before syncing (prevents syncing all branches unintentionally).");
+        let extraParams = "";
+        
+        if (typeof selectOption === "string") {
+            // 주(State) 단위 동기화
+            extraParams = `&state=${selectOption}`;
+        } else if (typeof selectOption === "number" && selectOption !== 0) {
+            // LocationId를 OptCode로 변환 (branch 파라미터용)
+            const branch = OptomMap.find(v => v.LocationId === selectOption)?.OptCode;
+            if (branch) {
+                extraParams = `&branch=${branch}`;
+            }
         }
 
-        const branchParam = `&branch=${branch}`;
-        
-        console.log(`Fetching roster data from ${fromDate} to ${toDate}${branch ? ` (Store: ${branch})` : ""}`);
-        
         // manual=true: 서버에서 수동 호출에만 추가 안전장치를 적용하기 위한 플래그
-        const response = await fetch(`/roster/api/roster/refresh?manual=true&scheduler=true&from=${fromDate}&to=${toDate}${branchParam}`, {
+        const response = await fetch(`/roster/api/roster/refresh?manual=true&scheduler=true&from=${fromDate}&to=${toDate}${extraParams}`, {
             method: "GET",
         });
         
@@ -114,21 +113,35 @@ const refreshManual = async () => {
     }
 }
 
-const getList = async (start?: Date, end?: Date, locationId?: number) => {
+const getList = async (start?: Date, end?: Date, selectOption?: number | string) => {
     console.log("=== Getting Roster List ===");
-    console.log(`Start: ${start}, End: ${end}, LocationId: ${locationId}`);
+    console.log(`Start: ${start}, End: ${end}, SelectOption: ${selectOption}`);
     
     try {
         const fallbackRange = getCurrentWeekRange();
         // 날짜만 추출하여 전송 (백엔드에서 정규화하지만, 프론트엔드에서도 명확하게)
         const fromDate = toDateOnly(start ?? fallbackRange.from);
         const toDate = toDateOnly(end ?? fallbackRange.to);
-        const locationParam = locationId ? `&locationId=${locationId}` : "";
         
-        console.log(`Fetching roster list from ${fromDate} to ${toDate}${locationParam}`);
+        let extraParams = "";
+        if (typeof selectOption === "string") {
+            // 주(State) 단위 조회 (백엔드 getList에서 state 파라미터를 지원하는지 확인 필요, 
+            // 현재 DB 구조상 locationId 필터만 가능하므로 locationId 목록으로 변환하여 전달하거나 
+            // 백엔드 수정을 고려해야 할 수도 있음. 우선 locationId 파라미터 방식을 유지하되 여러 개 가능 여부 확인)
+            const locationIds = OptomMap.filter(v => v.State.toUpperCase() === selectOption.toUpperCase()).map(v => v.LocationId);
+            if (locationIds.length > 0) {
+                // 여러 locationId를 전달하는 방식이 백엔드에서 지원되는지 확인 필요. 
+                // 지원 안 된다면 백엔드 수정 필요. 우선 단일 locationId 처리 방식 유지
+                extraParams = `&locationIds=${locationIds.join(',')}`;
+            }
+        } else if (typeof selectOption === "number" && selectOption !== 0) {
+            extraParams = `&locationId=${selectOption}`;
+        }
+        
+        console.log(`Fetching roster list from ${fromDate} to ${toDate}${extraParams}`);
 
         // const product = process.env.NODE_ENV === 'production' ? "roster" : "";
-        const res = await fetch(`/roster/api/roster/getList?from=${fromDate}&to=${toDate}${locationParam}`, {
+        const res = await fetch(`/roster/api/roster/getList?from=${fromDate}&to=${toDate}${extraParams}`, {
             method: "GET",
         });
         

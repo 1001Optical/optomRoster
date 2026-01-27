@@ -8,7 +8,7 @@ import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
 import {sendChangeToOptomateAPI, SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
 
-export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false) => {
+export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null) => {
     try {
         const db = getDB();
 
@@ -19,13 +19,21 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
             throw new Error("Missing required environment variables: EMPLOYMENTHERO_SECRET or EMPLOYMENTHERO_API_URL");
         }
 
-        let selectedLocations = OptomMap.map(v => `filter.selectedLocations=${v.LocationId}`).join("&")
+        let selectedLocations = ""
         if(branch) {
             const locationId = OptomMap.find(v => v.OptCode === branch)?.LocationId;
             if (!locationId) {
                 throw new Error(`Invalid branch code: ${branch}`);
             }
             selectedLocations = `filter.selectedLocations=${locationId}`
+        } else if (state) {
+            const stateLocations = OptomMap.filter(v => v.State.toUpperCase() === state.toUpperCase());
+            if (stateLocations.length === 0) {
+                throw new Error(`Invalid state: ${state}`);
+            }
+            selectedLocations = stateLocations.map(v => `filter.selectedLocations=${v.LocationId}`).join("&")
+        } else {
+            selectedLocations = OptomMap.map(v => `filter.selectedLocations=${v.LocationId}`).join("&")
         }
 
         const api = `${server_url}/rostershift?filter.SelectAllRoles=true&filter.ShiftStatuses=published&filter.fromDate=${fromDate}&filter.toDate=${toDate}${selectedLocations ? `&${selectedLocations}` : ""}`
