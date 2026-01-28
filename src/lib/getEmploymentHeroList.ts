@@ -8,7 +8,7 @@ import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
 import {sendChangeToOptomateAPI, SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
 
-export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null) => {
+export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null, skipAlerts?: boolean) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null, skipAlerts = false) => {
     try {
         const db = getDB();
 
@@ -236,7 +236,8 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         const { slotMismatches, appointmentConflicts } = await sendChangeToOptomateAPI(
             isScheduler,
             syncedLocationIds,
-            skipEmail
+            skipEmail,
+            skipAlerts
         );
 
         return { data: filterData, slotMismatches, appointmentConflicts }; // 실제 필터링된 데이터와 타임슬롯 불일치 정보, appointment 충돌 정보 반환

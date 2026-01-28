@@ -69,7 +69,8 @@ export interface AppointmentConflict {
 export async function sendChangeToOptomateAPI(
     isScheduler: boolean = false,
     locationFilter?: number[],
-    skipEmail: boolean = false
+    skipEmail: boolean = false,
+    skipAlerts: boolean = false
 ): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
     const db = getDB();
     const raw: ChangeLog[] = db.prepare(`SELECT * FROM CHANGE_LOG`).all() as ChangeLog[];
@@ -105,7 +106,7 @@ export async function sendChangeToOptomateAPI(
         const batchPromises = batch.map(async (changeLog) => {
             try {
                 const diffSummary = changeLog.diffSummary ? JSON.parse(changeLog.diffSummary) : null;
-                const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary);
+                const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary, skipAlerts);
                 // Appointment 충돌이 있으면 success=false로 처리하여 CHANGE_LOG를 유지 (재시도 가능하도록)
                 const hasConflicts = conflicts && conflicts.length > 0;
                 return { id: changeLog.id, success: !hasConflicts, summaries, mismatches, conflicts, hasConflicts };
@@ -169,8 +170,10 @@ export async function sendChangeToOptomateAPI(
     }
 
     // 브랜치 전체 타임슬롯 비교 추가
-    const branchMismatches = await compareBranchTotalSlots(db);
-    slotMismatches.push(...branchMismatches);
+    if (!skipAlerts) {
+        const branchMismatches = await compareBranchTotalSlots(db);
+        slotMismatches.push(...branchMismatches);
+    }
 
     // Appointment 충돌이 있고 스케줄러인 경우 메일 전송 (skipEmail이 false인 경우에만)
     if (appointmentConflicts.length > 0 && isScheduler && !skipEmail) {
@@ -407,7 +410,8 @@ async function processOptomData(
     optomData: optomData,
     db: Database.Database,
     OptomateApiUrl: string,
-    key: string
+    key: string,
+    skipSlotMismatch: boolean
 ): Promise<{isLocum: boolean, emailData?: PostEmailData | null, isFirst?: boolean, workHistory?: string, optomId?: number, summary?: ProcessedSummary, workFirst?: boolean, slotMismatch?: SlotMismatch, appointmentConflict?: AppointmentConflict}> {
     try {
         let isFirst = false;
@@ -563,7 +567,7 @@ async function processOptomData(
 
         // APP_ADJUST 전송 후 타임슬롯 비교 (key가 "new"인 경우만, 전송 성공 여부와 관계없이 항상 체크)
         let slotMismatch: SlotMismatch | undefined = undefined;
-        if (key === "new") {
+        if (key === "new" && !skipSlotMismatch) {
             // Optomate에 데이터가 반영될 시간을 주기 위해 약간 대기 (전송 성공한 경우만)
             if (appAdjustSuccess) {
                 await new Promise(resolve => setTimeout(resolve, 500));
@@ -681,7 +685,11 @@ async function processOptomData(
 }
 
 // 최적화된 callOptomateAPI 함수
-async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomData, new?: optomData}): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
+async function callOptomateAPI(
+    changeLog: ChangeLog,
+    diffSummary: {old?: optomData, new?: optomData},
+    skipAlerts: boolean
+): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
     console.log(`[CHANGE_LOG] Processing ${changeLog.changeType} for rosterId: ${changeLog.rosterId}`);
     console.log(`diffSummary: `, diffSummary)
     
@@ -707,7 +715,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         if (diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId) {
             console.log(`[DELETE] Processing deleted roster for ${diffSummary.old.firstName} ${diffSummary.old.lastName}`);
             try {
-                const result = await processOptomData(diffSummary.old, db, OptomateApiUrl, "deleted");
+                const result = await processOptomData(diffSummary.old, db, OptomateApiUrl, "deleted", skipAlerts);
                 if (result.summary) {
                     summaries.push(result.summary);
                 }
@@ -737,7 +745,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         const {data, key} = dataToProcess[i];
 
         try {
-            const result = await processOptomData(data, db, OptomateApiUrl, key);
+            const result = await processOptomData(data, db, OptomateApiUrl, key, skipAlerts);
             if (result.summary) {
                 summaries.push(result.summary);
                 if (result.slotMismatch) {
@@ -774,7 +782,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         // 신규 삽입된 경우: new 데이터만 처리
         if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
             try {
-                const result = await processOptomData(diffSummary.new, db, OptomateApiUrl, "new");
+                const result = await processOptomData(diffSummary.new, db, OptomateApiUrl, "new", skipAlerts);
                 if (result.summary) {
                     summaries.push(result.summary);
                     if (result.slotMismatch) {
