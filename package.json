@@ -12,6 +12,7 @@
     "@emailjs/browser": "^4.4.1",
     "@emailjs/nodejs": "^5.0.2",
     "@heroui/react": "^2.8.4",
+    "@libsql/client": "^0.17.0",
     "@radix-ui/react-slot": "^1.2.3",
     "better-sqlite3": "^12.2.0",
     "class-variance-authority": "^0.7.1",

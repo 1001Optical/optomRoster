@@ -30,7 +30,7 @@ export async function GET(
   >
 > {
   try {
-    const db = getDB();
+    const db = await getDB();
 
     // 쿼리 파라미터 읽기
     const { searchParams } = new URL(request.url);
@@ -195,13 +195,13 @@ export async function GET(
 
         // 해당 날짜의 예약 개수 DB에서 조회
         const appointmentCounts = new Map<string, number>();
-        OptomMap.forEach((store) => {
-          const cached = db.prepare(`
+        for (const store of OptomMap) {
+          const cached = await db.prepare(`
             SELECT count FROM appointment_count_cache 
             WHERE branch = ? AND date = ?
           `).get(store.OptCode, currentDate) as { count: number } | undefined;
           appointmentCounts.set(store.OptCode, cached?.count || 0);
-        });
+        }
         
         // 날짜별 데이터 저장
         const dateData = new Map<string, { slotCount: number; appointmentCount: number }>();
@@ -270,14 +270,14 @@ export async function GET(
     
     // 각 날짜별로 예약 개수 DB에서 조회하고 누적
     for (const currentDate of dates) {
-      OptomMap.forEach((store) => {
-        const cached = db.prepare(`
+      for (const store of OptomMap) {
+        const cached = await db.prepare(`
           SELECT count FROM appointment_count_cache 
           WHERE branch = ? AND date = ?
         `).get(store.OptCode, currentDate) as { count: number } | undefined;
         const count = cached?.count || 0;
         appointmentCountsMap.set(store.OptCode, (appointmentCountsMap.get(store.OptCode) || 0) + count);
-      });
+      }
     }
 
     // 결과를 배열로 변환 (OptomMap 순서 유지)

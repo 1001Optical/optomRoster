@@ -1,4 +1,4 @@
-import {getDB} from "@/utils/db/db";
+import {getDB, DBClient} from "@/utils/db/db";
 import {ChangeLog, optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
 import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
@@ -8,7 +8,6 @@ import {createOptomAccount} from "@/lib/createOptomAccount";
 import {chunk} from "@/lib/utils";
 import {createSecret} from "@/utils/crypto";
 import {calculateSlots} from "@/utils/slots";
-import type Database from "better-sqlite3";
 
 // 처리된 데이터 요약 타입
 interface ProcessedSummary {
@@ -72,8 +71,8 @@ export async function sendChangeToOptomateAPI(
     skipEmail: boolean = false,
     skipAlerts: boolean = false
 ): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
-    const db = getDB();
-    const raw: ChangeLog[] = db.prepare(`SELECT * FROM CHANGE_LOG`).all() as ChangeLog[];
+    const db = await getDB();
+    const raw: ChangeLog[] = await db.prepare(`SELECT * FROM CHANGE_LOG`).all() as ChangeLog[];
 
     const locSet = new Set(locationFilter ?? []);
     const result = locSet.size === 0 ? raw : raw.filter((log) => {
@@ -92,7 +91,7 @@ export async function sendChangeToOptomateAPI(
         return { slotMismatches: [], appointmentConflicts: [] };
     }
 
-    const BATCH_SIZE = 8;
+    const BATCH_SIZE = 4;
     const batches = chunk(result, BATCH_SIZE);
     const successIds: number[] = [];
     const processedSummaries: ProcessedSummary[] = [];
@@ -149,7 +148,7 @@ export async function sendChangeToOptomateAPI(
 
     if(successIds.length > 0){
         const placeholders = successIds.map(() => "?").join(',');
-        db.prepare(`DELETE FROM CHANGE_LOG WHERE id IN (${placeholders})`).run(...successIds);
+        await db.prepare(`DELETE FROM CHANGE_LOG WHERE id IN (${placeholders})`).run(...successIds);
         console.log(`[CHANGE_LOG] Deleted ${successIds.length} processed change log(s)`);
     }
     
@@ -297,7 +296,7 @@ function buildAppointmentConflictHtml(conflicts: AppointmentConflict[]): string 
 /**
  * 브랜치 전체 타임슬롯 비교 (EH vs Optomate)
  */
-async function compareBranchTotalSlots(db: Database.Database): Promise<SlotMismatch[]> {
+async function compareBranchTotalSlots(db: DBClient): Promise<SlotMismatch[]> {
     const mismatches: SlotMismatch[] = [];
     
     try {
@@ -309,7 +308,7 @@ async function compareBranchTotalSlots(db: Database.Database): Promise<SlotMisma
 
         // CHANGE_LOG에서 처리된 모든 날짜와 브랜치 추출
         // windowStart와 windowEnd를 사용하여 날짜 범위 파악
-        const changeLogs = db.prepare(`
+        const changeLogs = await db.prepare(`
             SELECT DISTINCT 
                 windowStart,
                 windowEnd,
@@ -360,7 +359,7 @@ async function compareBranchTotalSlots(db: Database.Database): Promise<SlotMisma
             for (const date of dates) {
                 try {
                     // EH 브랜치 전체 타임슬롯 계산
-                    const ehSlots = getEHBranchTotalSlots(db, branchCode, date);
+                    const ehSlots = await getEHBranchTotalSlots(db, branchCode, date);
                     
                     // Optomate 브랜치 전체 타임슬롯 가져오기
                     const optomateSlots = await getBranchTotalSlots(OptomateApiUrl, branchCode, date);
@@ -408,7 +407,7 @@ async function compareBranchTotalSlots(db: Database.Database): Promise<SlotMisma
 // processOptomData 함수 추가
 async function processOptomData(
     optomData: optomData,
-    db: Database.Database,
+    db: DBClient,
     OptomateApiUrl: string,
     key: string,
     skipSlotMismatch: boolean
@@ -639,7 +638,7 @@ async function processOptomData(
         let emailData = null;
         if (key !== "deleted" && optomData.isLocum) {
         // 스토어 템플릿 조회
-        const template = db.prepare('SELECT info FROM STORE_INFO WHERE OptCode = ?').get(APP_ADJUST.BRANCH_IDENTIFIER) as {
+        const template = await db.prepare('SELECT info FROM STORE_INFO WHERE OptCode = ?').get(APP_ADJUST.BRANCH_IDENTIFIER) as {
             info: string
         } | undefined;
 
@@ -697,7 +696,7 @@ async function callOptomateAPI(
         return { summaries: [], mismatches: [], conflicts: [] };
     }
 
-    const db = getDB();
+    const db = await getDB();
     const OptomateApiUrl = process.env.OPTOMATE_API_URL;
 
     if (!OptomateApiUrl) {
@@ -829,11 +828,11 @@ async function callOptomateAPI(
  * Employment Hero에서 브랜치 전체의 타임슬롯 총 개수 계산
  * 로컬 DB의 ROSTER 테이블에서 해당 날짜/브랜치의 모든 로스터 합산
  */
-function getEHBranchTotalSlots(
-    db: Database.Database,
+async function getEHBranchTotalSlots(
+    db: DBClient,
     branchCode: string,
     date: string
-): number {
+): Promise<number> {
     try {
         const branchInfo = OptomMap.find(v => v.OptCode === branchCode);
         if (!branchInfo) {
@@ -848,7 +847,7 @@ function getEHBranchTotalSlots(
         const endDateTime = nextDay.toISOString().split('.')[0] + 'Z';
 
         // 해당 브랜치의 해당 날짜 로스터 조회
-        const rosters = db.prepare(`
+        const rosters = await db.prepare(`
             SELECT startTime, endTime
             FROM ROSTER
             WHERE locationId = ?

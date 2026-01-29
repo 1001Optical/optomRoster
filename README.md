@@ -17,7 +17,8 @@ A Next.js 15 application that synchronizes roster shifts from Employment Hero in
 ## Tech Stack
 - Next.js 15, React 19
 - TypeScript
-- SQLite (better-sqlite3)
+- SQLite (better-sqlite3, local)
+- Turso (libSQL, production on Vercel)
 - date-fns / date-fns-tz
 - Tailwind CSS 4 (via PostCSS)
 
@@ -61,12 +62,15 @@ Webhooks (email/automation)
 
 Optional
 - DB_FILE: Custom path to the SQLite file (default: ./roster.sqlite)
+- TURSO_DATABASE_URL: Turso DB URL (required on Vercel)
+- TURSO_AUTH_TOKEN: Turso auth token (required on Vercel)
 - API_URL: Base URL used by scripts/daily-sync.sh when calling the app locally (default: http://localhost:3000)
 
 Note: Do not commit your .env file.
 
 ## Database
-- Default database file: roster.sqlite (WAL mode enabled)
+- Local development uses `roster.sqlite` (WAL mode enabled)
+- Vercel production uses Turso when `VERCEL=1` is present
 - Migrations are automatically executed on server start via src/utils/db/db.ts against files under /migrations
 - Core tables include ROSTER, ROSTER_BREAK, CHANGE_LOG, STORE_INFO (see migration SQL for details)
 
