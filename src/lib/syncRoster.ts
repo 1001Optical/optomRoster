@@ -53,9 +53,8 @@ export async function syncRoster(db: DBClient, incoming: optomData[], scope: { s
         throw new Error("incoming data must be an array");
     }
     
-    await db.exec('BEGIN');
-    
     try {
+        await db.transaction(async () => {
         // 날짜 범위를 ISO 8601 형식으로 변환
         const scopeStartISO = convertToISO8601(scope.start);
         const scopeEndISO = convertEndDateToISO8601(scope.end);
@@ -198,17 +197,15 @@ export async function syncRoster(db: DBClient, incoming: optomData[], scope: { s
 
         // 배치 실행 (트랜잭션 내에서)
         if (rosterData.length > 0 || breakData.length > 0) {
-            await db.transaction(async () => {
-                // 로스터 데이터 배치 실행
-                for (const data of rosterData) {
-                    await upsert.run(...data);
-                }
-                
-                // 브레이크 데이터 배치 실행
-                for (const data of breakData) {
-                    await upsertBreak.run(...data);
-                }
-            });
+            // 로스터 데이터 배치 실행
+            for (const data of rosterData) {
+                await upsert.run(...data);
+            }
+
+            // 브레이크 데이터 배치 실행
+            for (const data of breakData) {
+                await upsertBreak.run(...data);
+            }
         }
 
         // 2) DELETE: 받은 데이터에 없는 id는 삭제 (날짜 범위 + 브랜치 범위 내에서만)
@@ -268,10 +265,9 @@ export async function syncRoster(db: DBClient, incoming: optomData[], scope: { s
             console.log(`[SYNC] No location information available, skipping delete to protect other branch data`);
         }
 
-        await db.exec('COMMIT');
+        });
     } catch (e) {
         console.error("Error during roster sync, rolling back transaction:", e);
-        await db.exec('ROLLBACK');
         throw e;
     }
 }
