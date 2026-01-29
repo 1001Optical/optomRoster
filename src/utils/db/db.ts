@@ -30,7 +30,7 @@ declare global {
 }
 
 function shouldUseTurso(): boolean {
-    return process.env.VERCEL === '1';
+    return !!process.env.TURSO_DATABASE_URL && !!process.env.TURSO_AUTH_TOKEN;
 }
 
 function createSqliteClient(): DBClient {
@@ -61,13 +61,21 @@ function createSqliteClient(): DBClient {
             db.exec(sql);
         },
         transaction: async <T>(fn: () => Promise<T>) => {
+            if (db.inTransaction) {
+                return await fn();
+            }
+
             db.exec('BEGIN');
             try {
                 const result = await fn();
-                db.exec('COMMIT');
+                if (db.inTransaction) {
+                    db.exec('COMMIT');
+                }
                 return result;
             } catch (error) {
-                db.exec('ROLLBACK');
+                if (db.inTransaction) {
+                    db.exec('ROLLBACK');
+                }
                 throw error;
             }
         },
@@ -190,6 +198,9 @@ async function runMigrations(db: DBClient) {
 
         for (let i = 0; i < statements.length; i++) {
             const statement = statements[i];
+            if (/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;?\s*$/i.test(statement)) {
+                continue;
+            }
             if (statement.trim()) {
                 try {
                     await db.exec(statement);
