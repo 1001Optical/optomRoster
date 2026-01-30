@@ -1,19 +1,39 @@
 import 'server-only';
 import path from 'node:path';
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
+import Database from 'better-sqlite3';
+import { createClient } from '@libsql/client';
+import type { InArgs } from '@libsql/client';
 
 export const runtime = 'nodejs';
+
+export type PreparedStatement = {
+    all: <T = unknown>(...args: unknown[]) => Promise<T[]>;
+    get: <T = unknown>(...args: unknown[]) => Promise<T | undefined>;
+    run: (...args: unknown[]) => Promise<{ changes: number }>;
+};
+
+export type DBClient = {
+    prepare: (sql: string) => PreparedStatement;
+    exec: (sql: string) => Promise<void>;
+    transaction: <T>(fn: () => Promise<T>) => Promise<T>;
+    close: () => Promise<void>;
+    isTurso: boolean;
+};
 
 declare global {
     // 개발(HMR) 중 중복 연결 방지용
     // eslint-disable-next-line no-var
-    var __db__: Database.Database | undefined;
+    var __db__: DBClient | undefined;
     // eslint-disable-next-line no-var
     var __db_initialized__: boolean | undefined;
 }
 
-function _init(): Database.Database {
+function shouldUseTurso(): boolean {
+    return !!process.env.TURSO_DATABASE_URL && !!process.env.TURSO_AUTH_TOKEN;
+}
+
+function createSqliteClient(): DBClient {
     const filename = process.env.DB_FILE
         ? path.resolve(process.cwd(), process.env.DB_FILE)
         : path.resolve(process.cwd(), 'roster.sqlite');
@@ -25,8 +45,114 @@ function _init(): Database.Database {
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
 
+    return {
+        prepare: (sql: string) => {
+            const stmt = db.prepare(sql);
+            return {
+                all: async <T = unknown>(...args: unknown[]) => stmt.all(...args) as T[],
+                get: async <T = unknown>(...args: unknown[]) => stmt.get(...args) as T | undefined,
+                run: async (...args: unknown[]) => {
+                    const info = stmt.run(...args);
+                    return { changes: info.changes };
+                },
+            };
+        },
+        exec: async (sql: string) => {
+            db.exec(sql);
+        },
+        transaction: async <T>(fn: () => Promise<T>) => {
+            if (db.inTransaction) {
+                return await fn();
+            }
+
+            db.exec('BEGIN');
+            try {
+                const result = await fn();
+                if (db.inTransaction) {
+                    db.exec('COMMIT');
+                }
+                return result;
+            } catch (error) {
+                if (db.inTransaction) {
+                    db.exec('ROLLBACK');
+                }
+                throw error;
+            }
+        },
+        close: async () => {
+            db.close();
+        },
+        isTurso: false,
+    };
+}
+
+function createTursoClient(): DBClient {
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+
+    if (!url || !authToken) {
+        throw new Error('Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN');
+    }
+
+    const client = createClient({ url, authToken });
+
+    const normalizeArgs = (args: unknown[]): InArgs | undefined => {
+        if (args.length === 0) {
+            return undefined;
+        }
+        if (args.length === 1) {
+            const first = args[0];
+            if (Array.isArray(first)) {
+                return first as InArgs;
+            }
+            if (typeof first === 'object' && first !== null) {
+                return first as InArgs;
+            }
+        }
+        return args as InArgs;
+    };
+
+    return {
+        prepare: (sql: string) => ({
+            all: async <T = unknown>(...args: unknown[]) => {
+                const result = await client.execute({ sql, args: normalizeArgs(args) });
+                return result.rows as T[];
+            },
+            get: async <T = unknown>(...args: unknown[]) => {
+                const result = await client.execute({ sql, args: normalizeArgs(args) });
+                return (result.rows[0] as T | undefined) ?? undefined;
+            },
+            run: async (...args: unknown[]) => {
+                const result = await client.execute({ sql, args: normalizeArgs(args) });
+                return { changes: result.rowsAffected ?? 0 };
+            },
+        }),
+        exec: async (sql: string) => {
+            await client.execute(sql);
+        },
+        transaction: async <T>(fn: () => Promise<T>) => {
+            await client.execute('BEGIN');
+            try {
+                const result = await fn();
+                await client.execute('COMMIT');
+                return result;
+            } catch (error) {
+                await client.execute('ROLLBACK');
+                throw error;
+            }
+        },
+        close: async () => {
+            await client.close();
+        },
+        isTurso: true,
+    };
+}
+
+async function _init(): Promise<DBClient> {
+    const db = shouldUseTurso() ? createTursoClient() : createSqliteClient();
+
     // 마이그레이션 실행
-    runMigrations(db);
+    await runMigrations(db);
 
     // 초기화 완료 표시
     global.__db_initialized__ = true;
@@ -34,7 +160,7 @@ function _init(): Database.Database {
     return db;
 }
 
-function runMigrations(db: Database.Database) {
+async function runMigrations(db: DBClient) {
     const migrationsDir = path.join(process.cwd(), 'migrations');
 
     if (!fs.existsSync(migrationsDir)) {
@@ -52,7 +178,7 @@ function runMigrations(db: Database.Database) {
     }
 
     // 기존 테이블 확인
-    const existingTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    const existingTables = await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
 
     // 필수 테이블 확인
     const requiredTables = ['ROSTER', 'CHANGE_LOG', 'STORE_INFO'];
@@ -72,9 +198,12 @@ function runMigrations(db: Database.Database) {
 
         for (let i = 0; i < statements.length; i++) {
             const statement = statements[i];
+            if (/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;?\s*$/i.test(statement)) {
+                continue;
+            }
             if (statement.trim()) {
                 try {
-                    db.exec(statement);
+                    await db.exec(statement);
                 } catch (error) {
                     console.error(`Error executing statement ${i + 1} in ${file}:`, error);
 
@@ -91,7 +220,7 @@ function runMigrations(db: Database.Database) {
     }
 
     // 마이그레이션 후 테이블 확인
-    db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    await db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
 }
 
 function parseSQLStatements(sql: string): string[] {
@@ -170,9 +299,9 @@ function parseSQLStatements(sql: string): string[] {
     return statements.filter(stmt => stmt.trim() && !stmt.trim().startsWith('--'));
 }
 
-export function getDB(): Database.Database {
+export async function getDB(): Promise<DBClient> {
     if (!global.__db__) {
-        global.__db__ = _init();
+        global.__db__ = await _init();
     }
     return global.__db__;
 }
@@ -183,13 +312,17 @@ export function isAppInitialized(): boolean {
 }
 
 // 개발 환경에서 데이터베이스 재초기화 함수
-export function resetDB() {
+export async function resetDB() {
     if (global.__db__) {
-        global.__db__.close();
+        await global.__db__.close();
         global.__db__ = undefined;
     }
 
     global.__db_initialized__ = false;
+
+    if (shouldUseTurso()) {
+        return;
+    }
 
     const filename = process.env.DB_FILE
         ? path.resolve(process.cwd(), process.env.DB_FILE)
