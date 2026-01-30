@@ -104,14 +104,15 @@ export default function LoginModal({open, onAuth,}: LoginModalProps) {
     async function submit(nextMode: Mode) {
         setMode(nextMode);
         setError('');
-        const path = process.env.NEXT_PUBLIC_API_BASE_URL + nextMode === 'signup' ? '/auth/register' : '/auth/login';
+        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+        const path = apiUrl + (nextMode === 'signup' ? '/auth/register' : '/auth/login');
         const payload =
             nextMode === 'signup'
                 ? { email: suEmail.trim(), password: suPassword }
                 : { email: email.trim(), password };
 
         try {
-            const res = await apiFetch(path, {
+            const res = await fetch(path, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),

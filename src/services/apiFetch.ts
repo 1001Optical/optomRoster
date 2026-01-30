@@ -1,4 +1,4 @@
-const apiFetch = async (path: string, init?: RequestInit) => {
+const apiFetch = async (path: string, init?: RequestInit): Promise<any> => {
     console.log(`=== API Fetch ===`);
     console.log(`Path: ${path}`);
     console.log(`Method: ${init?.method ?? "GET"}`);
