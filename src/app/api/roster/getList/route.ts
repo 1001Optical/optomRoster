@@ -4,7 +4,7 @@ import {getDB} from "@/utils/db/db";
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<I1001RosterData[]>>>  {
     try {
-        const db = getDB();
+        const db = await getDB();
 
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
@@ -81,7 +81,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                      WHERE startTime >= $from
                        AND endTime < $to`;
 
-        const params: any = {
+        const params: Record<string, string | number> = {
             from: `${fromDateOnly}T00:00:00Z`,
             to: `${toDateNextDayStr}T00:00:00Z`
         };
@@ -94,7 +94,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             });
         }
 
-        const result: unknown[] = db.prepare(query).all(params);
+        const result: unknown[] = await db.prepare(query).all(params);
 
         return NextResponse.json({
             message: 'Success',

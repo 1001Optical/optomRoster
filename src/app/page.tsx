@@ -9,8 +9,6 @@ import { DateRange } from "react-day-picker";
 import { RiRefreshLine } from "react-icons/ri";
 import IooISelect from "@/components/IooISelect";
 import {OptomMap} from "@/data/stores";
-import {SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
-import AlertToast from "@/components/AlertToast";
 
 // 오늘 기준으로 이번 주의 일요일부터 토요일까지의 날짜 범위를 계산하는 함수
 function getCurrentWeekRange(): DateRange {
@@ -41,8 +39,6 @@ export default function Home() {
     const [selectOption, setSelectOption] = useState<number | string | undefined>()
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
-    const [slotMismatches, setSlotMismatches] = useState<SlotMismatch[]>([]);
-    const [appointmentConflicts, setAppointmentConflicts] = useState<AppointmentConflict[]>([]);
     const [rangeType] = useState<"weekly" | "monthly">("weekly")
     const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>(getCurrentWeekRange())
 
@@ -108,37 +104,10 @@ export default function Home() {
                     console.log("=== Manual Refresh Triggered ===");
                     setLoading(true);
                     setError(null);
-                    setSlotMismatches([]);
-                    setAppointmentConflicts([]);
-
                     try {
                         const refreshResult = await refresh(selectedWeek?.from, selectedWeek?.to, selectOption);
                         console.log("Manual refresh completed successfully");
                         console.log("[PAGE] Refresh result:", refreshResult);
-                        
-                        let selectedOptCodes: string[] = [];
-                        if (typeof selectOption === 'number') {
-                            const code = OptomMap.find(v => v.LocationId === selectOption)?.OptCode;
-                            if (code) selectedOptCodes.push(code);
-                        } else if (typeof selectOption === 'string') {
-                            selectedOptCodes = OptomMap.filter(v => v.State === selectOption).map(v => v.OptCode);
-                        }
-
-                        // 타임슬롯 불일치 정보 저장 (빈 배열이어도 저장)
-                        const slotMismatches = refreshResult?.slotMismatches || [];
-                        const filteredSlotMismatches = selectedOptCodes.length > 0
-                            ? slotMismatches.filter((s: SlotMismatch) => selectedOptCodes.includes(s.branch))
-                            : slotMismatches;
-                        console.log(`[PAGE] Setting ${slotMismatches.length} slot mismatches:`, slotMismatches);
-                        setSlotMismatches(filteredSlotMismatches);
-                        
-                        // Appointment 충돌 정보 저장 (빈 배열이어도 저장)
-                        const appointmentConflicts = refreshResult?.appointmentConflicts || [];
-                        const filteredAppointmentConflicts = selectedOptCodes.length > 0
-                            ? appointmentConflicts.filter((c: AppointmentConflict) => selectedOptCodes.includes(c.branch))
-                            : appointmentConflicts;
-                        console.log(`[PAGE] Setting ${appointmentConflicts.length} appointment conflicts:`, appointmentConflicts);
-                        setAppointmentConflicts(filteredAppointmentConflicts);
                         
                         // 데이터 다시 로드
                         const newData = await getList(selectedWeek?.from, selectedWeek?.to, selectOption);
@@ -175,19 +144,6 @@ export default function Home() {
                         </div>
                     </div>
                 </div>
-            </div>
-        )}
-
-        <AlertToast 
-            slotMismatches={slotMismatches}
-            appointmentConflicts={appointmentConflicts}
-        />
-        
-        {/* 디버깅: 현재 state 확인 */}
-        {process.env.NODE_ENV === 'development' && (
-            <div className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs p-2 rounded z-50 max-w-xs">
-                <div>Slot Mismatches: {slotMismatches.length}</div>
-                <div>Appointment Conflicts: {appointmentConflicts.length}</div>
             </div>
         )}
 

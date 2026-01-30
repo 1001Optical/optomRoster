@@ -1,6 +1,5 @@
 import {optomData} from "@/types/types";
-import Database from "better-sqlite3";
-import {getDB} from "@/utils/db/db";
+import {getDB, DBClient} from "@/utils/db/db";
 
 /**
  * 날짜 문자열을 ISO 8601 형식으로 변환
@@ -48,15 +47,14 @@ function convertEndDateToISO8601(dateStr: string): string {
     return dateStr;
 }
 
-export async function syncRoster(db: Database.Database, incoming: optomData[], scope: { start: string, end: string, locationIds?: number[] }) {
+export async function syncRoster(db: DBClient, incoming: optomData[], scope: { start: string, end: string, locationIds?: number[] }) {
     if (!Array.isArray(incoming)) {
         console.error("incoming is not an array:", incoming);
         throw new Error("incoming data must be an array");
     }
     
-    db.exec('BEGIN');
-    
     try {
+        await db.transaction(async () => {
         // 날짜 범위를 ISO 8601 형식으로 변환
         const scopeStartISO = convertToISO8601(scope.start);
         const scopeEndISO = convertEndDateToISO8601(scope.end);
@@ -97,7 +95,7 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
         const oneMonthAgoISO = oneMonthAgo.toISOString().split('.')[0] + 'Z';
         
-        const cleanupResult = db.prepare(`
+        const cleanupResult = await db.prepare(`
             DELETE FROM ROSTER WHERE startTime < ?
         `).run(oneMonthAgoISO);
         
@@ -135,8 +133,8 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
         isPaidBreak = excluded.isPaidBreak
     `);
         
-        const rosterData = [];
-        const breakData = [];
+        const rosterData: Array<[number, number | null, string | null, string | null, number, string, string, string, string | null, number]> = [];
+        const breakData: Array<[number, number, string, string, number]> = [];
         const incomingIds: number[] = [];
 
         for (const v of incoming) {
@@ -199,19 +197,15 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
 
         // 배치 실행 (트랜잭션 내에서)
         if (rosterData.length > 0 || breakData.length > 0) {
-            const transaction = db.transaction((rosterBatch, breakBatch) => {
-                // 로스터 데이터 배치 실행
-                for (const data of rosterBatch) {
-                    upsert.run(...data);
-                }
-                
-                // 브레이크 데이터 배치 실행
-                for (const data of breakBatch) {
-                    upsertBreak.run(...data);
-                }
-            });
+            // 로스터 데이터 배치 실행
+            for (const data of rosterData) {
+                await upsert.run(...data);
+            }
 
-            transaction(rosterData, breakData);
+            // 브레이크 데이터 배치 실행
+            for (const data of breakData) {
+                await upsertBreak.run(...data);
+            }
         }
 
         // 2) DELETE: 받은 데이터에 없는 id는 삭제 (날짜 범위 + 브랜치 범위 내에서만)
@@ -226,7 +220,7 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
                 const idPlaceholders = validIncomingIds.map(() => '?').join(',');
                 
                 // 디버깅: 삭제 대상 조회
-                const candidatesToDelete = db.prepare(`
+                const candidatesToDelete = await db.prepare(`
                     SELECT id, startTime, locationId, firstName, lastName
                      FROM ROSTER
                      WHERE startTime >= ?
@@ -239,7 +233,7 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
                     console.log(`[SYNC] Found ${candidatesToDelete.length} roster entries to delete:`, candidatesToDelete.map(r => `id=${r.id}, startTime=${r.startTime}, locationId=${r.locationId}, name=${r.firstName} ${r.lastName}`));
                 }
                 
-                const deleteResult = db.prepare(`
+                const deleteResult = await db.prepare(`
                     DELETE FROM ROSTER
                      WHERE startTime >= ?
                        AND startTime < ?
@@ -255,7 +249,7 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
             } else {
                 // 받은 데이터가 없는 경우: 동기화한 브랜치의 날짜 범위 내 모든 데이터 삭제
                 // (Employment Hero에서 모든 로스터를 지운 경우를 처리)
-                const deleteResult = db.prepare(`
+                const deleteResult = await db.prepare(`
                     DELETE FROM ROSTER
                      WHERE startTime >= ?
                        AND startTime < ?
@@ -271,10 +265,9 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
             console.log(`[SYNC] No location information available, skipping delete to protect other branch data`);
         }
 
-        db.exec('COMMIT');
+        });
     } catch (e) {
         console.error("Error during roster sync, rolling back transaction:", e);
-        db.exec('ROLLBACK');
         throw e;
     }
 }
@@ -286,8 +279,8 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
  * 
  * 클린업 시 생성된 CHANGE_LOG는 삭제하여 옵토메이트로 전송되지 않도록 함
  */
-export function deletePastDataForAllBranches(): number {
-    const db = getDB();
+export async function deletePastDataForAllBranches(): Promise<number> {
+    const db = await getDB();
     
     try {
         // 오늘 날짜 계산 (UTC 기준)
@@ -302,7 +295,7 @@ export function deletePastDataForAllBranches(): number {
         const cleanupStartTime = new Date().toISOString();
         
         // 삭제할 rosterId 목록 미리 조회 (나중에 CHANGE_LOG 삭제에 사용)
-        const rosterIdsToDelete = db.prepare(`
+        const rosterIdsToDelete = await db.prepare(`
             SELECT id FROM ROSTER
             WHERE startTime < ?
         `).all(todayStart) as Array<{id: number}>;
@@ -310,7 +303,7 @@ export function deletePastDataForAllBranches(): number {
         const rosterIdList = rosterIdsToDelete.map(r => r.id);
         
         // 오늘 이전의 모든 데이터 삭제 (모든 브랜치)
-        const deleteResult = db.prepare(`
+        const deleteResult = await db.prepare(`
             DELETE FROM ROSTER
             WHERE startTime < ?
         `).run(todayStart);
@@ -319,7 +312,7 @@ export function deletePastDataForAllBranches(): number {
         // 삭제 직후 생성된 roster_deleted 타입의 CHANGE_LOG를 삭제
         if (rosterIdList.length > 0) {
             const placeholders = rosterIdList.map(() => '?').join(',');
-            const cleanupLogDeleteResult = db.prepare(`
+            const cleanupLogDeleteResult = await db.prepare(`
                 DELETE FROM CHANGE_LOG
                 WHERE rosterId IN (${placeholders})
                   AND changeType = 'roster_deleted'

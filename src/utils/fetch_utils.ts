@@ -40,7 +40,7 @@ const refresh = async (start?: Date, end?: Date, selectOption?: number | string)
         }
 
         // manual=true: 서버에서 수동 호출에만 추가 안전장치를 적용하기 위한 플래그
-        const response = await fetch(`/roster/api/roster/refresh?manual=true&scheduler=true&from=${fromDate}&to=${toDate}${extraParams}`, {
+        const response = await fetch(`/roster/api/roster/refresh?manual=true&scheduler=true&skipAlerts=true&from=${fromDate}&to=${toDate}${extraParams}`, {
             method: "GET",
         });
         

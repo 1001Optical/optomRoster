@@ -43,3 +43,4 @@ next-env.d.ts
 *.sqlite-shm
 *.sqlite-wal
 gmail_token.json
+.env*.local

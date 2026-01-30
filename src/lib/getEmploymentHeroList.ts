@@ -8,9 +8,9 @@ import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
 import {sendChangeToOptomateAPI, SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
 
-export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null) => {
+export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null, skipAlerts?: boolean) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null, skipAlerts = false) => {
     try {
-        const db = getDB();
+        const db = await getDB();
 
         const secret = process.env.EMPLOYMENTHERO_SECRET;
         const server_url = process.env.EMPLOYMENTHERO_API_URL;
@@ -59,7 +59,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         const CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
 
         // DB 캐시 테이블 생성 (한 번만)
-        db.exec(`
+        await db.exec(`
             CREATE TABLE IF NOT EXISTS employee_cache (
                 employee_id INTEGER PRIMARY KEY,
                 data TEXT NOT NULL,
@@ -91,7 +91,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                     }
 
                     // DB 캐시 확인
-                    const dbCached = db.prepare(`
+                    const dbCached = await db.prepare(`
                         SELECT data, updated_at FROM employee_cache 
                         WHERE employee_id = ? AND updated_at > ?
                     `).get(employeeId, Date.now() - CACHE_TTL) as { data: string; updated_at: number } | undefined;
@@ -117,7 +117,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
                     // 캐시 저장
                     employeeMap.set(employeeId, processedInfo);
-                    db.prepare(`
+                    await db.prepare(`
                         INSERT OR REPLACE INTO employee_cache (employee_id, data, updated_at)
                         VALUES (?, ?, ?)
                     `).run(employeeId, JSON.stringify(employeeInfo), Date.now());
@@ -236,7 +236,8 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         const { slotMismatches, appointmentConflicts } = await sendChangeToOptomateAPI(
             isScheduler,
             syncedLocationIds,
-            skipEmail
+            skipEmail,
+            skipAlerts
         );
 
         return { data: filterData, slotMismatches, appointmentConflicts }; // 실제 필터링된 데이터와 타임슬롯 불일치 정보, appointment 충돌 정보 반환
