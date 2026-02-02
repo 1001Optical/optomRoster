@@ -63,7 +63,7 @@ async function initDatabase() {
         for (const statement of statements) {
             if (statement.trim()) {
                 try {
-                    await db.execute({ sql: statement });
+                    await db.execute({ sql: statement, args: [] });
                 } catch (error) {
                     console.error(`Error executing statement in ${file}:`, error);
                     console.error('Statement:', statement);
@@ -76,7 +76,10 @@ async function initDatabase() {
     console.log('Database initialization completed successfully!');
     
     // 테이블 확인
-    const tablesResult = await db.execute({ sql: "SELECT name FROM sqlite_master WHERE type='table'" });
+    const tablesResult = await db.execute({
+        sql: "SELECT name FROM sqlite_master WHERE type='table'",
+        args: [],
+    });
     const tableNames = tablesResult.rows.map((t: any) => t.name);
     console.log('Created tables:', tableNames);
     
