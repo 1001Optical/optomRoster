@@ -1,5 +1,5 @@
 import {optomData} from "@/types/types";
-import type { Client } from "@libsql/client";
+import type { Client, InArgs } from "@libsql/client";
 import {dbAll, dbExecute, getDB} from "@/utils/db/db";
 
 /**
@@ -54,9 +54,15 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
         throw new Error("incoming data must be an array");
     }
     
-    await dbExecute(db, 'BEGIN');
+    const tx = await db.transaction("write");
     
     try {
+        const txExecute = (sql: string, args?: InArgs) => tx.execute({ sql, args });
+        const txAll = async <T>(sql: string, args?: InArgs): Promise<T[]> => {
+            const result = await tx.execute({ sql, args });
+            return result.rows as T[];
+        };
+
         // 날짜 범위를 ISO 8601 형식으로 변환
         const scopeStartISO = convertToISO8601(scope.start);
         const scopeEndISO = convertEndDateToISO8601(scope.end);
@@ -97,8 +103,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
         const oneMonthAgoISO = oneMonthAgo.toISOString().split('.')[0] + 'Z';
         
-        const cleanupResult = await dbExecute(
-            db,
+        const cleanupResult = await txExecute(
             `
             DELETE FROM ROSTER WHERE startTime < ?
         `,
@@ -206,12 +211,12 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
         if (rosterData.length > 0 || breakData.length > 0) {
             // 로스터 데이터 배치 실행
             for (const data of rosterData) {
-                await dbExecute(db, upsertSql, data);
+                await txExecute(upsertSql, data);
             }
             
             // 브레이크 데이터 배치 실행
             for (const data of breakData) {
-                await dbExecute(db, upsertBreakSql, data);
+                await txExecute(upsertBreakSql, data);
             }
         }
 
@@ -227,8 +232,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                 const idPlaceholders = validIncomingIds.map(() => '?').join(',');
                 
                 // 디버깅: 삭제 대상 조회
-                const candidatesToDelete = await dbAll<{id: number, startTime: string, locationId: number, firstName: string | null, lastName: string | null}>(
-                    db,
+                const candidatesToDelete = await txAll<{id: number, startTime: string, locationId: number, firstName: string | null, lastName: string | null}>(
                     `
                     SELECT id, startTime, locationId, firstName, lastName
                      FROM ROSTER
@@ -244,8 +248,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                     console.log(`[SYNC] Found ${candidatesToDelete.length} roster entries to delete:`, candidatesToDelete.map(r => `id=${r.id}, startTime=${r.startTime}, locationId=${r.locationId}, name=${r.firstName} ${r.lastName}`));
                 }
                 
-                const deleteResult = await dbExecute(
-                    db,
+                const deleteResult = await txExecute(
                     `
                     DELETE FROM ROSTER
                      WHERE startTime >= ?
@@ -265,8 +268,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
             } else {
                 // 받은 데이터가 없는 경우: 동기화한 브랜치의 날짜 범위 내 모든 데이터 삭제
                 // (Employment Hero에서 모든 로스터를 지운 경우를 처리)
-                const deleteResult = await dbExecute(
-                    db,
+                const deleteResult = await txExecute(
                     `
                     DELETE FROM ROSTER
                      WHERE startTime >= ?
@@ -286,11 +288,15 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
             console.log(`[SYNC] No location information available, skipping delete to protect other branch data`);
         }
 
-        await dbExecute(db, 'COMMIT');
+        await tx.commit();
     } catch (e) {
         console.error("Error during roster sync, rolling back transaction:", e);
-        await dbExecute(db, 'ROLLBACK');
+        await tx.rollback();
         throw e;
+    } finally {
+        if (!tx.closed) {
+            tx.close();
+        }
     }
 }
 

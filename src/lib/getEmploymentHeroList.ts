@@ -97,7 +97,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                         SELECT data, updated_at FROM employee_cache 
                         WHERE employee_id = ? AND updated_at > ?
                     `,
-                        [employeeId, Date.now() - CACHE_TTL]
+                        [Number(employeeId), Date.now() - CACHE_TTL]
                     );
 
                     if (dbCached) {
@@ -127,7 +127,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                         INSERT OR REPLACE INTO employee_cache (employee_id, data, updated_at)
                         VALUES (?, ?, ?)
                     `,
-                        [employeeId, JSON.stringify(employeeInfo), Date.now()]
+                        [Number(employeeId), JSON.stringify(employeeInfo), Date.now()]
                     );
 
                     return { id: employeeId, info: processedInfo };

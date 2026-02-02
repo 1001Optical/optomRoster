@@ -2,7 +2,7 @@ import 'server-only';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createClient } from '@libsql/client';
-import type { Client } from '@libsql/client';
+import type { Client, InArgs } from '@libsql/client';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +16,7 @@ declare global {
     var __db_init_promise__: Promise<Client> | undefined;
 }
 
-type DBArgs = Array<unknown> | Record<string, unknown>;
+type DBArgs = InArgs;
 
 function resolveDbUrl(): string {
     if (process.env.TURSO_DATABASE_URL) {
@@ -73,7 +73,9 @@ async function runMigrations(db: Client) {
     const existingTablesResult = await db.execute({
         sql: "SELECT name FROM sqlite_master WHERE type='table'",
     });
-    const existingTables = existingTablesResult.rows as { name: string }[];
+    const existingTables = existingTablesResult.rows
+        .map((row) => ({ name: row.name as string }))
+        .filter((row) => typeof row.name === 'string');
 
     // 필수 테이블 확인
     const requiredTables = ['ROSTER', 'CHANGE_LOG', 'STORE_INFO'];
@@ -190,7 +192,17 @@ export function parseSQLStatements(sql: string): string[] {
         statements.push(currentStatement.trim());
     }
 
-    return statements.filter(stmt => stmt.trim() && !stmt.trim().startsWith('--'));
+    return statements.filter(stmt => {
+        const trimmed = stmt.trim();
+        if (!trimmed || trimmed.startsWith('--')) {
+            return false;
+        }
+        // Avoid running transaction control statements inside libsql execute
+        if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(trimmed)) {
+            return false;
+        }
+        return true;
+    });
 }
 
 export async function getDB(): Promise<Client> {
@@ -251,15 +263,15 @@ export async function resetDB() {
 }
 
 export async function dbExecute(db: Client, sql: string, args?: DBArgs) {
-    return db.execute({ sql, args });
+    return db.execute(sql, args);
 }
 
 export async function dbAll<T = unknown>(db: Client, sql: string, args?: DBArgs): Promise<T[]> {
-    const result = await db.execute({ sql, args });
+    const result = await db.execute(sql, args);
     return result.rows as T[];
 }
 
 export async function dbGet<T = unknown>(db: Client, sql: string, args?: DBArgs): Promise<T | undefined> {
-    const result = await db.execute({ sql, args });
+    const result = await db.execute(sql, args);
     return result.rows[0] as T | undefined;
 }
