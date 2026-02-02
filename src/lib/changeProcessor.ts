@@ -2,7 +2,7 @@ import {dbAll, dbExecute, dbGet, getDB} from "@/utils/db/db";
 import {ChangeLog, optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
 import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
-import {postEmail, PostEmailData} from "@/lib/postEmail";
+import type { PostEmailData } from "@/lib/postEmail";
 import {OptomMap} from "@/data/stores";
 import {createOptomAccount} from "@/lib/createOptomAccount";
 import {chunk} from "@/lib/utils";
@@ -65,7 +65,7 @@ export interface AppointmentConflict {
 
 // ---- 외부 API 전송 함수 ----
 // locationFilter: 처리할 locationId 제한 (없으면 전체)
-// skipEmail: 메일 발송을 건너뛸지 여부 (스토어별 처리 시 true로 설정하여 나중에 한 번에 보낼 수 있음)
+// skipEmail: legacy param (email alerts disabled)
 export async function sendChangeToOptomateAPI(
     isScheduler: boolean = false,
     locationFilter?: number[],
@@ -168,127 +168,11 @@ export async function sendChangeToOptomateAPI(
         console.log("=".repeat(80) + "\n");
     }
 
-    // 브랜치 전체 타임슬롯 비교 추가
-    const branchMismatches = await compareBranchTotalSlots(db);
-    slotMismatches.push(...branchMismatches);
+    // 타임슬롯 비교 비활성화 (성능 이슈)
 
-    // Appointment 충돌이 있고 스케줄러인 경우 메일 전송 (skipEmail이 false인 경우에만)
-    if (appointmentConflicts.length > 0 && isScheduler && !skipEmail) {
-        await sendAppointmentConflictEmail(appointmentConflicts);
-    }
+    // Appointment conflict email alerts disabled for performance.
 
     return { slotMismatches, appointmentConflicts };
-}
-
-/**
- * Appointment 충돌 메일 전송 (스케줄러용) - Gmail API 사용
- * 외부에서도 호출 가능하도록 export
- */
-export async function sendAppointmentConflictEmail(conflicts: AppointmentConflict[]): Promise<void> {
-    try {
-        // Gmail API 설정 확인
-        if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET || !process.env.GMAIL_SENDER) {
-            console.warn(`[APPOINTMENT CONFLICT] Gmail API credentials not set, skipping email`);
-            return;
-        }
-
-        // gmail_token.json 파일 읽기
-        const fs = await import("fs");
-        const path = await import("path");
-        const tokenPath = path.join(process.cwd(), "gmail_token.json");
-        
-        if (!fs.existsSync(tokenPath)) {
-            console.warn(`[APPOINTMENT CONFLICT] gmail_token.json not found, skipping email`);
-            return;
-        }
-
-        const tokens = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
-        const { google } = await import("googleapis");
-
-        // OAuth2 인증 설정
-        const auth = new google.auth.OAuth2(
-            process.env.GMAIL_CLIENT_ID,
-            process.env.GMAIL_CLIENT_SECRET
-        );
-        auth.setCredentials(tokens);
-
-        const gmail = google.gmail({ version: "v1", auth });
-
-        // toBase64Url 함수 (autoAlertScript.js와 동일)
-        function toBase64Url(str: string): string {
-            return Buffer.from(str)
-                .toString("base64")
-                .replace(/\+/g, "-")
-                .replace(/\//g, "_")
-                .replace(/=+$/, "");
-        }
-
-        // HTML 메일 생성
-        const html = buildAppointmentConflictHtml(conflicts);
-        const subject = `[Warning] Appointment Conflict Alert - ${conflicts.length} conflict(s) detected`;
-
-        // Gmail 메일 전송
-        const raw = [
-            `From: ${process.env.GMAIL_SENDER}`,
-            `To: ${process.env.GMAIL_TO_EMAILS || process.env.GMAIL_SENDER}`,
-            `Subject: ${subject}`,
-            "MIME-Version: 1.0",
-            'Content-Type: text/html; charset="UTF-8"',
-            "",
-            html,
-        ].join("\n");
-
-        await gmail.users.messages.send({
-            userId: "me",
-            requestBody: { raw: toBase64Url(raw) },
-        });
-
-        console.log(`[APPOINTMENT CONFLICT] Email sent successfully for ${conflicts.length} conflict(s)`);
-    } catch (error) {
-        console.error(`[APPOINTMENT CONFLICT] Error sending email:`, error);
-    }
-}
-
-/**
- * Appointment 충돌 정보를 HTML 형식으로 변환
- */
-function buildAppointmentConflictHtml(conflicts: AppointmentConflict[]): string {
-    const tr = conflicts
-        .map(
-            (c) => `<tr>
-                <td style="padding:8px;border:1px solid #ddd;">${c.branchName} (${c.branch})</td>
-                <td style="padding:8px;border:1px solid #ddd;">${c.date}</td>
-                <td style="padding:8px;border:1px solid #ddd;">${c.name}</td>
-                <td style="padding:8px;border:1px solid #ddd;">${c.optomId}</td>
-                <td style="padding:8px;border:1px solid #ddd;">${c.startTime.split('T')[1].substring(0, 5)} - ${c.endTime.split('T')[1].substring(0, 5)}</td>
-                <td style="padding:8px;border:1px solid #ddd;">${c.changeType === 'roster_deleted' ? 'Deleted' : 'Changed'}</td>
-                <td style="padding:8px;border:1px solid #ddd;">${c.email}</td>
-            </tr>`
-        )
-        .join("");
-
-    return `
-    <div style="font-family:Arial,sans-serif;">
-      <p>Hi Team</p>
-      <p>AppAdjust transmission was skipped due to existing appointments when roster was changed/deleted.</p>
-      <p>Total ${conflicts.length} conflict(s) detected.</p>
-      <table style="border-collapse:collapse;margin-top:16px;">
-        <thead>
-          <tr>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">Branch</th>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">Date</th>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">Name</th>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">OptomId</th>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">Time</th>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">Change Type</th>
-            <th style="padding:8px;border:1px solid #ddd;background:#f5f5f5;">Email</th>
-          </tr>
-        </thead>
-        <tbody>${tr}</tbody>
-      </table>
-      <p style="margin-top:16px;">best regards,<br/>Roster Automation System</p>
-    </div>
-  `;
 }
 
 /**
@@ -805,18 +689,15 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         }
     }
 
-    // 이메일 전송 (Locum만)
+    // 이메일 알림 비활성화: work history만 업데이트
     if (locumResults.length > 0) {
-        const emailPromises = locumResults.map(async (result) => {
-            if (result.emailData) {
-                await postEmail(result.emailData, result.isFirst ?? false);
-                if(result.optomId && result.workHistory) {
-                    await addWorkHistory(result.optomId, result.workHistory);
-                }
+        const workHistoryPromises = locumResults.map(async (result) => {
+            if (result.optomId && result.workHistory) {
+                await addWorkHistory(result.optomId, result.workHistory);
             }
         });
 
-        await Promise.allSettled(emailPromises);
+        await Promise.allSettled(workHistoryPromises);
     }
 
     return { summaries, mismatches, conflicts };

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { I1001Response } from "@/types/api_response";
-import { sendAppointmentConflictEmail, sendChangeToOptomateAPI } from "@/lib/changeProcessor";
+import { sendChangeToOptomateAPI } from "@/lib/changeProcessor";
 
 /**
  * 모든 Appointment 충돌을 조회하여 한 번에 메일 전송
  * GET /api/roster/send-conflict-email
  * 
- * CHANGE_LOG에 남아있는 모든 항목을 처리하여 충돌 정보를 수집하고,
- * 모든 충돌을 한 번에 메일로 전송합니다.
+ * CHANGE_LOG에 남아있는 모든 항목을 처리하여 충돌 정보를 수집합니다.
+ * 메일 전송은 성능 이슈로 비활성화되었습니다.
  */
 export async function GET(request: Request): Promise<NextResponse<I1001Response<{ conflictsCount: number }>>> {
     try {
@@ -29,12 +29,9 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             );
         }
 
-        // 모든 충돌을 한 번에 메일로 전송
-        await sendAppointmentConflictEmail(appointmentConflicts);
-
         return NextResponse.json(
             {
-                message: "Email sent successfully",
+                message: "Email alerts disabled",
                 data: { conflictsCount: appointmentConflicts.length }
             },
             { status: 200 }
