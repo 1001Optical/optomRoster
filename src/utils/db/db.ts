@@ -265,15 +265,15 @@ export async function resetDB() {
 }
 
 export async function dbExecute(db: Client, sql: string, args?: DBArgs) {
-    return db.execute(sql, args);
+    return db.execute({ sql, args: args ?? [] });
 }
 
 export async function dbAll<T = unknown>(db: Client, sql: string, args?: DBArgs): Promise<T[]> {
-    const result = await db.execute(sql, args);
+    const result = await db.execute({ sql, args: args ?? [] });
     return result.rows as T[];
 }
 
 export async function dbGet<T = unknown>(db: Client, sql: string, args?: DBArgs): Promise<T | undefined> {
-    const result = await db.execute(sql, args);
+    const result = await db.execute({ sql, args: args ?? [] });
     return result.rows[0] as T | undefined;
 }
