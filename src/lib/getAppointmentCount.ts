@@ -1,7 +1,7 @@
 import { createSecret } from "@/utils/crypto";
 import { OptomMap } from "@/data/stores";
 import { fromZonedTime } from "date-fns-tz";
-import { getDB } from "@/utils/db/db";
+import { dbExecute, dbGet, getDB } from "@/utils/db/db";
 import { toDateOnly } from "@/utils/time";
 
 /**
@@ -73,10 +73,10 @@ export async function getAppointmentCount(
   date: string,
   forceRefresh: boolean = false
 ): Promise<number> {
-  const db = getDB();
+  const db = await getDB();
   
   // DB 테이블 생성 (한 번만)
-  db.exec(`
+  await dbExecute(db, `
     CREATE TABLE IF NOT EXISTS appointment_count_cache (
       branch TEXT NOT NULL,
       date TEXT NOT NULL,
@@ -107,10 +107,14 @@ export async function getAppointmentCount(
 
   // 과거 날짜만 DB에서 조회 (배치 작업으로 미리 저장된 데이터)
   if (!forceRefresh) {
-    const cached = db.prepare(`
+    const cached = await dbGet<{ count: number }>(
+      db,
+      `
       SELECT count FROM appointment_count_cache 
       WHERE branch = ? AND date = ?
-    `).get(branch, date) as { count: number } | undefined;
+    `,
+      [branch, date]
+    );
 
     if (cached) {
       console.log(
@@ -228,10 +232,14 @@ export async function getAppointmentCount(
     );
 
     // DB에 저장 (영구 저장) - 슬롯 개수를 저장
-    db.prepare(`
+    await dbExecute(
+      db,
+      `
       INSERT OR REPLACE INTO appointment_count_cache (branch, date, count, updated_at)
       VALUES (?, ?, ?, ?)
-    `).run(branch, date, totalSlots, Date.now());
+    `,
+      [branch, date, totalSlots, Date.now()]
+    );
 
     return totalSlots;
   } catch (error) {
@@ -340,4 +348,3 @@ export async function syncAppointmentCounts(
     `[APPOINTMENT COUNT SYNC] Completed syncing appointment slot counts for ${date}`
   );
 }
-

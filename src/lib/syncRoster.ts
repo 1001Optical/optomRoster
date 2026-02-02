@@ -1,6 +1,6 @@
 import {optomData} from "@/types/types";
-import Database from "better-sqlite3";
-import {getDB} from "@/utils/db/db";
+import type { Client } from "@libsql/client";
+import {dbAll, dbExecute, getDB} from "@/utils/db/db";
 
 /**
  * 날짜 문자열을 ISO 8601 형식으로 변환
@@ -48,13 +48,13 @@ function convertEndDateToISO8601(dateStr: string): string {
     return dateStr;
 }
 
-export async function syncRoster(db: Database.Database, incoming: optomData[], scope: { start: string, end: string, locationIds?: number[] }) {
+export async function syncRoster(db: Client, incoming: optomData[], scope: { start: string, end: string, locationIds?: number[] }) {
     if (!Array.isArray(incoming)) {
         console.error("incoming is not an array:", incoming);
         throw new Error("incoming data must be an array");
     }
     
-    db.exec('BEGIN');
+    await dbExecute(db, 'BEGIN');
     
     try {
         // 날짜 범위를 ISO 8601 형식으로 변환
@@ -97,16 +97,21 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
         const oneMonthAgoISO = oneMonthAgo.toISOString().split('.')[0] + 'Z';
         
-        const cleanupResult = db.prepare(`
+        const cleanupResult = await dbExecute(
+            db,
+            `
             DELETE FROM ROSTER WHERE startTime < ?
-        `).run(oneMonthAgoISO);
+        `,
+            [oneMonthAgoISO]
+        );
         
-        if (cleanupResult.changes > 0) {
-            console.log(`[SYNC] Cleaned up ${cleanupResult.changes} old roster entries older than ${oneMonthAgoISO}`);
+        const cleanupCount = cleanupResult.rowsAffected ?? 0;
+        if (cleanupCount > 0) {
+            console.log(`[SYNC] Cleaned up ${cleanupCount} old roster entries older than ${oneMonthAgoISO}`);
         }
         
         // 1) UPSERT: 신규 → INSERT, 기존 → UPDATE
-        const upsert = db.prepare(`
+        const upsertSql = `
       INSERT INTO ROSTER (
         id, employeeId, firstName, lastName, locationId, locationName, startTime, endTime, email, isLocum
       )
@@ -123,9 +128,9 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
         endTime      = excluded.endTime,
         email        = excluded.email,
         isLocum      = excluded.isLocum
-    `);
+    `;
 
-        const upsertBreak = db.prepare(`
+        const upsertBreakSql = `
       INSERT INTO ROSTER_BREAK (id, rosterId, startTime, endTime, isPaidBreak)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
@@ -133,7 +138,7 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
         startTime = excluded.startTime,
         endTime = excluded.endTime,
         isPaidBreak = excluded.isPaidBreak
-    `);
+    `;
         
         const rosterData = [];
         const breakData = [];
@@ -199,19 +204,15 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
 
         // 배치 실행 (트랜잭션 내에서)
         if (rosterData.length > 0 || breakData.length > 0) {
-            const transaction = db.transaction((rosterBatch, breakBatch) => {
-                // 로스터 데이터 배치 실행
-                for (const data of rosterBatch) {
-                    upsert.run(...data);
-                }
-                
-                // 브레이크 데이터 배치 실행
-                for (const data of breakBatch) {
-                    upsertBreak.run(...data);
-                }
-            });
-
-            transaction(rosterData, breakData);
+            // 로스터 데이터 배치 실행
+            for (const data of rosterData) {
+                await dbExecute(db, upsertSql, data);
+            }
+            
+            // 브레이크 데이터 배치 실행
+            for (const data of breakData) {
+                await dbExecute(db, upsertBreakSql, data);
+            }
         }
 
         // 2) DELETE: 받은 데이터에 없는 id는 삭제 (날짜 범위 + 브랜치 범위 내에서만)
@@ -226,44 +227,58 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
                 const idPlaceholders = validIncomingIds.map(() => '?').join(',');
                 
                 // 디버깅: 삭제 대상 조회
-                const candidatesToDelete = db.prepare(`
+                const candidatesToDelete = await dbAll<{id: number, startTime: string, locationId: number, firstName: string | null, lastName: string | null}>(
+                    db,
+                    `
                     SELECT id, startTime, locationId, firstName, lastName
                      FROM ROSTER
                      WHERE startTime >= ?
                        AND startTime < ?
                        AND locationId IN (${locationPlaceholders})
                        AND id NOT IN (${idPlaceholders})
-                `).all(scopeStartISO, scopeEndISO, ...syncedLocationIds, ...validIncomingIds) as Array<{id: number, startTime: string, locationId: number, firstName: string | null, lastName: string | null}>;
+                `,
+                    [scopeStartISO, scopeEndISO, ...syncedLocationIds, ...validIncomingIds]
+                );
                 
                 if (candidatesToDelete.length > 0) {
                     console.log(`[SYNC] Found ${candidatesToDelete.length} roster entries to delete:`, candidatesToDelete.map(r => `id=${r.id}, startTime=${r.startTime}, locationId=${r.locationId}, name=${r.firstName} ${r.lastName}`));
                 }
                 
-                const deleteResult = db.prepare(`
+                const deleteResult = await dbExecute(
+                    db,
+                    `
                     DELETE FROM ROSTER
                      WHERE startTime >= ?
                        AND startTime < ?
                        AND locationId IN (${locationPlaceholders})
                        AND id NOT IN (${idPlaceholders})
-                `).run(scopeStartISO, scopeEndISO, ...syncedLocationIds, ...validIncomingIds);
+                `,
+                    [scopeStartISO, scopeEndISO, ...syncedLocationIds, ...validIncomingIds]
+                );
                 
-                if (deleteResult.changes > 0) {
-                    console.log(`[SYNC] Deleted ${deleteResult.changes} roster entries not in incoming data (range: ${scope.start} to ${scope.end}, locations: ${syncedLocationIds.join(', ')})`);
+                const deleteCount = deleteResult.rowsAffected ?? 0;
+                if (deleteCount > 0) {
+                    console.log(`[SYNC] Deleted ${deleteCount} roster entries not in incoming data (range: ${scope.start} to ${scope.end}, locations: ${syncedLocationIds.join(', ')})`);
                 } else if (candidatesToDelete.length > 0) {
-                    console.warn(`[SYNC] WARNING: Found ${candidatesToDelete.length} candidates to delete but deleteResult.changes is ${deleteResult.changes}`);
+                    console.warn(`[SYNC] WARNING: Found ${candidatesToDelete.length} candidates to delete but deleteCount is ${deleteCount}`);
                 }
             } else {
                 // 받은 데이터가 없는 경우: 동기화한 브랜치의 날짜 범위 내 모든 데이터 삭제
                 // (Employment Hero에서 모든 로스터를 지운 경우를 처리)
-                const deleteResult = db.prepare(`
+                const deleteResult = await dbExecute(
+                    db,
+                    `
                     DELETE FROM ROSTER
                      WHERE startTime >= ?
                        AND startTime < ?
                        AND locationId IN (${locationPlaceholders})
-                `).run(scopeStartISO, scopeEndISO, ...syncedLocationIds);
+                `,
+                    [scopeStartISO, scopeEndISO, ...syncedLocationIds]
+                );
                 
-                if (deleteResult.changes > 0) {
-                    console.log(`[SYNC] Deleted ${deleteResult.changes} roster entries (all entries in range ${scope.start} to ${scope.end} for locations: ${syncedLocationIds.join(', ')}) - no incoming data received`);
+                const deleteCount = deleteResult.rowsAffected ?? 0;
+                if (deleteCount > 0) {
+                    console.log(`[SYNC] Deleted ${deleteCount} roster entries (all entries in range ${scope.start} to ${scope.end} for locations: ${syncedLocationIds.join(', ')}) - no incoming data received`);
                 }
             }
         } else {
@@ -271,10 +286,10 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
             console.log(`[SYNC] No location information available, skipping delete to protect other branch data`);
         }
 
-        db.exec('COMMIT');
+        await dbExecute(db, 'COMMIT');
     } catch (e) {
         console.error("Error during roster sync, rolling back transaction:", e);
-        db.exec('ROLLBACK');
+        await dbExecute(db, 'ROLLBACK');
         throw e;
     }
 }
@@ -286,8 +301,8 @@ export async function syncRoster(db: Database.Database, incoming: optomData[], s
  * 
  * 클린업 시 생성된 CHANGE_LOG는 삭제하여 옵토메이트로 전송되지 않도록 함
  */
-export function deletePastDataForAllBranches(): number {
-    const db = getDB();
+export async function deletePastDataForAllBranches(): Promise<number> {
+    const db = await getDB();
     
     try {
         // 오늘 날짜 계산 (UTC 기준)
@@ -302,42 +317,56 @@ export function deletePastDataForAllBranches(): number {
         const cleanupStartTime = new Date().toISOString();
         
         // 삭제할 rosterId 목록 미리 조회 (나중에 CHANGE_LOG 삭제에 사용)
-        const rosterIdsToDelete = db.prepare(`
+        const rosterIdsToDelete = await dbAll<{id: number}>(
+            db,
+            `
             SELECT id FROM ROSTER
             WHERE startTime < ?
-        `).all(todayStart) as Array<{id: number}>;
+        `,
+            [todayStart]
+        );
         
         const rosterIdList = rosterIdsToDelete.map(r => r.id);
         
         // 오늘 이전의 모든 데이터 삭제 (모든 브랜치)
-        const deleteResult = db.prepare(`
+        const deleteResult = await dbExecute(
+            db,
+            `
             DELETE FROM ROSTER
             WHERE startTime < ?
-        `).run(todayStart);
+        `,
+            [todayStart]
+        );
         
         // 클린업으로 인해 생성된 CHANGE_LOG 삭제 (옵토메이트로 전송되지 않도록)
         // 삭제 직후 생성된 roster_deleted 타입의 CHANGE_LOG를 삭제
         if (rosterIdList.length > 0) {
             const placeholders = rosterIdList.map(() => '?').join(',');
-            const cleanupLogDeleteResult = db.prepare(`
+            const cleanupLogDeleteResult = await dbExecute(
+                db,
+                `
                 DELETE FROM CHANGE_LOG
                 WHERE rosterId IN (${placeholders})
                   AND changeType = 'roster_deleted'
                   AND whenDetected >= ?
-            `).run(...rosterIdList, cleanupStartTime);
+            `,
+                [...rosterIdList, cleanupStartTime]
+            );
             
-            if (cleanupLogDeleteResult.changes > 0) {
-                console.log(`[CLEANUP] Deleted ${cleanupLogDeleteResult.changes} CHANGE_LOG entries created during cleanup (to prevent Optomate transmission)`);
+            const cleanupLogDeleteCount = cleanupLogDeleteResult.rowsAffected ?? 0;
+            if (cleanupLogDeleteCount > 0) {
+                console.log(`[CLEANUP] Deleted ${cleanupLogDeleteCount} CHANGE_LOG entries created during cleanup (to prevent Optomate transmission)`);
             }
         }
         
-        if (deleteResult.changes > 0) {
-            console.log(`[CLEANUP] Deleted ${deleteResult.changes} roster entries before today (${todayStr}) for all branches`);
+        const deleteCount = deleteResult.rowsAffected ?? 0;
+        if (deleteCount > 0) {
+            console.log(`[CLEANUP] Deleted ${deleteCount} roster entries before today (${todayStr}) for all branches`);
         } else {
             console.log(`[CLEANUP] No past roster entries found before today (${todayStr})`);
         }
         
-        return deleteResult.changes;
+        return deleteCount;
     } catch (error) {
         console.error(`[CLEANUP] Error deleting past data:`, error);
         throw error;

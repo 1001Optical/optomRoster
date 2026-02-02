@@ -12,7 +12,7 @@ export async function GET(
     request: Request
 ): Promise<NextResponse<I1001Response<{ deleted: number }>>> {
     try {
-        const deletedCount = deletePastDataForAllBranches();
+        const deletedCount = await deletePastDataForAllBranches();
         
         return NextResponse.json({
             message: "success",
@@ -31,4 +31,3 @@ export async function GET(
         );
     }
 }
-

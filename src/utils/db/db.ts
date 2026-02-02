@@ -1,32 +1,50 @@
 import 'server-only';
 import path from 'node:path';
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
+import { createClient } from '@libsql/client';
+import type { Client } from '@libsql/client';
 
 export const runtime = 'nodejs';
 
 declare global {
     // 개발(HMR) 중 중복 연결 방지용
     // eslint-disable-next-line no-var
-    var __db__: Database.Database | undefined;
+    var __db__: Client | undefined;
     // eslint-disable-next-line no-var
     var __db_initialized__: boolean | undefined;
+    // eslint-disable-next-line no-var
+    var __db_init_promise__: Promise<Client> | undefined;
 }
 
-function _init(): Database.Database {
+type DBArgs = Array<unknown> | Record<string, unknown>;
+
+function resolveDbUrl(): string {
+    if (process.env.TURSO_DATABASE_URL) {
+        return process.env.TURSO_DATABASE_URL;
+    }
+
     const filename = process.env.DB_FILE
         ? path.resolve(process.cwd(), process.env.DB_FILE)
         : path.resolve(process.cwd(), 'roster.sqlite');
 
-    const db = new Database(filename);
+    return `file:${filename}`;
+}
 
-    // 성능·일관성 옵션
-    db.pragma('foreign_keys = ON');
-    db.pragma('journal_mode = WAL');
-    db.pragma('synchronous = NORMAL');
+function getAuthToken(): string | undefined {
+    return process.env.TURSO_AUTH_TOKEN || process.env.TURSO_TOKEN;
+}
+
+async function _init(): Promise<Client> {
+    const url = resolveDbUrl();
+    const authToken = getAuthToken();
+
+    const db = createClient({
+        url,
+        authToken,
+    });
 
     // 마이그레이션 실행
-    runMigrations(db);
+    await runMigrations(db);
 
     // 초기화 완료 표시
     global.__db_initialized__ = true;
@@ -34,7 +52,7 @@ function _init(): Database.Database {
     return db;
 }
 
-function runMigrations(db: Database.Database) {
+async function runMigrations(db: Client) {
     const migrationsDir = path.join(process.cwd(), 'migrations');
 
     if (!fs.existsSync(migrationsDir)) {
@@ -52,7 +70,10 @@ function runMigrations(db: Database.Database) {
     }
 
     // 기존 테이블 확인
-    const existingTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    const existingTablesResult = await db.execute({
+        sql: "SELECT name FROM sqlite_master WHERE type='table'",
+    });
+    const existingTables = existingTablesResult.rows as { name: string }[];
 
     // 필수 테이블 확인
     const requiredTables = ['ROSTER', 'CHANGE_LOG', 'STORE_INFO'];
@@ -74,7 +95,7 @@ function runMigrations(db: Database.Database) {
             const statement = statements[i];
             if (statement.trim()) {
                 try {
-                    db.exec(statement);
+                    await db.execute({ sql: statement });
                 } catch (error) {
                     console.error(`Error executing statement ${i + 1} in ${file}:`, error);
 
@@ -91,10 +112,12 @@ function runMigrations(db: Database.Database) {
     }
 
     // 마이그레이션 후 테이블 확인
-    db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    await db.execute({
+        sql: "SELECT name FROM sqlite_master WHERE type='table'",
+    });
 }
 
-function parseSQLStatements(sql: string): string[] {
+export function parseSQLStatements(sql: string): string[] {
     const statements: string[] = [];
     let currentStatement = '';
     let inTrigger = false;
@@ -170,11 +193,23 @@ function parseSQLStatements(sql: string): string[] {
     return statements.filter(stmt => stmt.trim() && !stmt.trim().startsWith('--'));
 }
 
-export function getDB(): Database.Database {
-    if (!global.__db__) {
-        global.__db__ = _init();
+export async function getDB(): Promise<Client> {
+    if (global.__db__ && global.__db_initialized__) {
+        return global.__db__;
     }
-    return global.__db__;
+
+    if (global.__db_init_promise__) {
+        return global.__db_init_promise__;
+    }
+
+    global.__db_init_promise__ = _init();
+    try {
+        const db = await global.__db_init_promise__;
+        global.__db__ = db;
+        return db;
+    } finally {
+        global.__db_init_promise__ = undefined;
+    }
 }
 
 // 앱 초기화 확인 함수
@@ -183,17 +218,21 @@ export function isAppInitialized(): boolean {
 }
 
 // 개발 환경에서 데이터베이스 재초기화 함수
-export function resetDB() {
-    if (global.__db__) {
-        global.__db__.close();
+export async function resetDB() {
+    if (global.__db__ && typeof global.__db__.close === 'function') {
+        await global.__db__.close();
         global.__db__ = undefined;
     }
 
     global.__db_initialized__ = false;
 
-    const filename = process.env.DB_FILE
-        ? path.resolve(process.cwd(), process.env.DB_FILE)
-        : path.resolve(process.cwd(), 'roster.sqlite');
+    const url = resolveDbUrl();
+    if (!url.startsWith('file:')) {
+        console.warn('resetDB skipped: non-file database URL detected');
+        return;
+    }
+
+    const filename = url.replace('file:', '');
 
     // 데이터베이스 파일 삭제
     if (fs.existsSync(filename)) {
@@ -209,4 +248,18 @@ export function resetDB() {
     if (fs.existsSync(shmFile)) {
         fs.unlinkSync(shmFile);
     }
+}
+
+export async function dbExecute(db: Client, sql: string, args?: DBArgs) {
+    return db.execute({ sql, args });
+}
+
+export async function dbAll<T = unknown>(db: Client, sql: string, args?: DBArgs): Promise<T[]> {
+    const result = await db.execute({ sql, args });
+    return result.rows as T[];
+}
+
+export async function dbGet<T = unknown>(db: Client, sql: string, args?: DBArgs): Promise<T | undefined> {
+    const result = await db.execute({ sql, args });
+    return result.rows[0] as T | undefined;
 }

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import {I1001Response, I1001RosterData} from "@/types/api_response";
-import {getDB} from "@/utils/db/db";
+import {dbAll, getDB} from "@/utils/db/db";
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<I1001RosterData[]>>>  {
     try {
-        const db = getDB();
+        const db = await getDB();
 
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
@@ -78,23 +78,21 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                             substr(startTime, 12, 5)                   AS hhmmStart,
                             substr(endTime, 12, 5)                     AS hhmmEnd
                      FROM ROSTER
-                     WHERE startTime >= $from
-                       AND endTime < $to`;
+                     WHERE startTime >= ?
+                       AND endTime < ?`;
 
-        const params: any = {
-            from: `${fromDateOnly}T00:00:00Z`,
-            to: `${toDateNextDayStr}T00:00:00Z`
-        };
+        const params: any[] = [
+            `${fromDateOnly}T00:00:00Z`,
+            `${toDateNextDayStr}T00:00:00Z`,
+        ];
 
         if (locationIds.length > 0) {
-            const placeholders = locationIds.map((_, i) => `$loc${i}`).join(',');
+            const placeholders = locationIds.map(() => '?').join(',');
             query += ` AND locationId IN (${placeholders})`;
-            locationIds.forEach((id, i) => {
-                params[`loc${i}`] = id;
-            });
+            params.push(...locationIds);
         }
 
-        const result: unknown[] = db.prepare(query).all(params);
+        const result: unknown[] = await dbAll(db, query, params);
 
         return NextResponse.json({
             message: 'Success',
