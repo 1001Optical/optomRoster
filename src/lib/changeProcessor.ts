@@ -9,6 +9,7 @@ import {chunk} from "@/lib/utils";
 import {createSecret} from "@/utils/crypto";
 import {calculateSlots} from "@/utils/slots";
 import type { Client } from "@libsql/client";
+import {PostAppAdjust} from "@/lib/appointment";
 
 // 처리된 데이터 요약 타입
 interface ProcessedSummary {
@@ -425,27 +426,14 @@ async function processOptomData(
             console.log(`[CHANGE] Setting AppAdjust to INACTIVE for old roster: ${optomData.firstName} ${optomData.lastName} at ${branchInfo.StoreName} on ${date}`);
         }
 
-        // 로스터를 옵토메이트에 보내기
-        const response = await fetch(`${OptomateApiUrl}/Optometrist(${id})/AppAdjust`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-                "authorization": createSecret("1001_HO_JH", "10011001"),
-            },
-            body: JSON.stringify({APP_ADJUST}),
-        });
+        // 로스터를 옵토메이트에 보내기 (실패해도 계속 진행)
+        const response = await PostAppAdjust(id, APP_ADJUST);
 
         // 응답 상태 확인 (전송 실패해도 슬롯 미스매치는 체크해야 함)
-        let appAdjustSuccess = true;
-        let responseText = "";
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[APP_ADJUST] API request failed with status: ${response.status} ${response.statusText}`, errorText);
-            appAdjustSuccess = false;
-            // 에러가 발생해도 슬롯 미스매치는 체크해야 하므로 throw하지 않음
-        } else {
-            // 응답 텍스트 확인
-            responseText = await response.text();
+        const appAdjustSuccess = response.ok === true;
+        if (!appAdjustSuccess) {
+            const err = response.error instanceof Error ? response.error.message : String(response.error);
+            console.warn(`[APP_ADJUST] failed but continue: ${err}`);
         }
 
         // APP_ADJUST 전송 후 타임슬롯 비교 (key가 "new"인 경우만, 전송 성공 여부와 관계없이 항상 체크)
@@ -488,35 +476,7 @@ async function processOptomData(
             }
         }
 
-        // 전송 실패한 경우 에러 반환 (하지만 slotMismatch는 포함)
-        if (!appAdjustSuccess) {
-            return {
-                isLocum: optomData.isLocum === 1,
-                emailData: null,
-                isFirst,
-                workHistory: branchInfo.OptCode,
-                optomId: id,
-                summary: undefined,
-                workFirst,
-                slotMismatch,
-                appointmentConflict: undefined
-            };
-        }
-
-        // 빈 응답인 경우 처리
-        if (!responseText.trim()) {
-            return { 
-                isLocum: optomData.isLocum === 1, 
-                emailData: null, 
-                isFirst,
-                workHistory: branchInfo.OptCode,
-                optomId: id,
-                summary: undefined,
-                workFirst,
-                slotMismatch,
-                appointmentConflict: undefined
-            };
-        }
+        // 실패해도 요약/후속 처리는 계속 진행
 
         // 삭제된 경우 이메일 전송하지 않음
         let emailData = null;
