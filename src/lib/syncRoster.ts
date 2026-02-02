@@ -57,9 +57,10 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
     const tx = await db.transaction("write");
     
     try {
-        const txExecute = (sql: string, args?: InArgs) => tx.execute({ sql, args });
+        const txExecute = (sql: string, args?: InArgs) =>
+            tx.execute({ sql, args: args ?? [] });
         const txAll = async <T>(sql: string, args?: InArgs): Promise<T[]> => {
-            const result = await tx.execute({ sql, args });
+            const result = await tx.execute({ sql, args: args ?? [] });
             return result.rows as T[];
         };
 
