@@ -72,6 +72,7 @@ async function runMigrations(db: Client) {
     // 기존 테이블 확인
     const existingTablesResult = await db.execute({
         sql: "SELECT name FROM sqlite_master WHERE type='table'",
+        args: [],
     });
     const existingTables = existingTablesResult.rows
         .map((row) => ({ name: row.name as string }))
@@ -97,7 +98,7 @@ async function runMigrations(db: Client) {
             const statement = statements[i];
             if (statement.trim()) {
                 try {
-                    await db.execute({ sql: statement });
+                    await db.execute({ sql: statement, args: [] });
                 } catch (error) {
                     console.error(`Error executing statement ${i + 1} in ${file}:`, error);
 
@@ -116,6 +117,7 @@ async function runMigrations(db: Client) {
     // 마이그레이션 후 테이블 확인
     await db.execute({
         sql: "SELECT name FROM sqlite_master WHERE type='table'",
+        args: [],
     });
 }
 
