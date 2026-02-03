@@ -14,9 +14,9 @@ const CheckError = (text:string) => {
     return undefined;
 }
 
-// 특수문자 제거 함수 (알파벳과 숫자만 유지)
+// 특수문자 제거 함수 (알파벳, 숫자, 공백 유지)
 const removeSpecialChars = (str: string): string => {
-    return str.replace(/[^a-zA-Z0-9]/g, '');
+    return str.replace(/[^a-zA-Z0-9 ]/g, '');
 }
 
 export const createOptomAccount = async (id: string, firstName: string, lastName: string, email: string) => {
