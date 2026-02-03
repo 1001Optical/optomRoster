@@ -40,7 +40,7 @@ const refresh = async (start?: Date, end?: Date, selectOption?: number | string)
         }
 
         // manual=true: 서버에서 수동 호출에만 추가 안전장치를 적용하기 위한 플래그
-        const response = await fetch(`/roster/api/roster/refresh?manual=true&scheduler=true&from=${fromDate}&to=${toDate}${extraParams}`, {
+        const response = await fetch(`/api/roster/refresh?manual=true&scheduler=true&from=${fromDate}&to=${toDate}${extraParams}`, {
             method: "GET",
         });
         
@@ -95,7 +95,7 @@ const refreshManual = async () => {
         
         console.log(`Fetching manual roster data from ${fromDate} to ${toDate}`);
         
-        const response = await fetch(`/roster/api/roster/refresh?from=${fromDate}&to=${toDate}`, {
+        const response = await fetch(`/api/roster/refresh?from=${fromDate}&to=${toDate}`, {
             method: "GET",
         });
         
@@ -141,7 +141,7 @@ const getList = async (start?: Date, end?: Date, selectOption?: number | string)
         console.log(`Fetching roster list from ${fromDate} to ${toDate}${extraParams}`);
 
         // const product = process.env.NODE_ENV === 'production' ? "roster" : "";
-        const res = await fetch(`/roster/api/roster/getList?from=${fromDate}&to=${toDate}${extraParams}`, {
+        const res = await fetch(`/api/roster/getList?from=${fromDate}&to=${toDate}${extraParams}`, {
             method: "GET",
         });
         
@@ -186,7 +186,7 @@ const getOptomCount = async (date: string): Promise<OptomCountResult[]> => {
         
         console.log(`Fetching optom count for date: ${dateOnly}`);
         
-        const res = await fetch(`/roster/api/roster/optom-count?date=${dateOnly}`, {
+        const res = await fetch(`/api/roster/optom-count?date=${dateOnly}`, {
             method: "GET",
         });
         
@@ -223,7 +223,7 @@ const getOptomCountByRange = async (from: string, to: string, weekly: boolean = 
         console.log(`Fetching optom count for range: ${fromDate} to ${toDate}`);
         
         const weeklyParam = weekly ? "&weekly=true" : "";
-        const res = await fetch(`/roster/api/roster/optom-count?from=${fromDate}&to=${toDate}${weeklyParam}`, {
+        const res = await fetch(`/api/roster/optom-count?from=${fromDate}&to=${toDate}${weeklyParam}`, {
             method: "GET",
         });
         

@@ -9,7 +9,7 @@ import { calculateSlots } from "@/utils/slots";
 
 /**
  * 스토어별 Optom Roster 카운트와 실제 예약 개수, 점유율을 반환하는 API
- * GET /api/roster/optom-count?date=2025-12-04 (단일 날짜)
+ * GET /api/optom-count?date=2025-12-04 (단일 날짜)
  * GET /api/roster/optom-count?from=2025-12-01&to=2025-12-07 (기간)
  */
 export async function GET(
