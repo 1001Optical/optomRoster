@@ -109,7 +109,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         // 1) ExternalId 우선
         if (externalId) {
             console.log(`Fetching optometrists by externalId: ${externalId}`);
-            const result = await search("/api/optometrists/searchByExternaUserId", { externalUserId: externalId });
+            const result = await search("/api/optometrist/searchByExternaUserId", { externalUserId: externalId });
             if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
             }
@@ -118,7 +118,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         // 2) Email
         if (email) {
             console.log(`Fetching optometrists by email: ${email}`);
-            const result = await search("/api/optometrists/searchByEmail", { email });
+            const result = await search("/api/optometrist/searchByEmail", { email });
             if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
             }
@@ -126,7 +126,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
         // 3) 이름
         console.log(`Fetching optometrists by name: ${firstName} ${lastName}`);
-        const result = await search("/api/optometrists/search", { firstName, lastName });
+        const result = await search("/api/optometrist/search", { firstName, lastName });
         if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
         }
