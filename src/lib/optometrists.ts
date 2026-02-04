@@ -20,21 +20,26 @@ interface SearchResult {
 const optomCache = new Map<string, ICacheEntry>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+// 특수문자 제거 (공백 유지)
+const sanitizeName = (value: string) => value.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+
 function isExpired(entry?: ICacheEntry) {
     if (!entry) return true;
     return Date.now() - entry.cachedAt > CACHE_TTL;
 }
 
 export const searchOptomId: SearchOptomIdType = async (firstName, lastName, email, externalId) => {
+    const safeFirstName = sanitizeName(firstName);
+    const safeLastName = sanitizeName(lastName);
     const cacheKey = externalId
         ? `ext:${externalId}`
-        : `${firstName}_${lastName}_${email ?? ""}`;
+        : `${safeFirstName}_${safeLastName}_${email ?? ""}`;
     console.log(`=== Searching Optomate ID ===`);
-    console.log(`Full name: ${firstName} ${lastName}`);
+    console.log(`Full name: ${safeFirstName} ${safeLastName}`);
 
     const cached = optomCache.get(cacheKey);
     if (cached && !isExpired(cached)) {
-        console.log(`Using cached optom ID for ${firstName} ${lastName}`);
+        console.log(`Using cached optom ID for ${safeFirstName} ${safeLastName}`);
         return { id: cached.id, workHistory: cached.workHistory };
     } else if (cached && isExpired(cached)) {
         optomCache.delete(cacheKey);
@@ -125,15 +130,15 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         }
 
         // 3) 이름
-        console.log(`Fetching optometrists by name: ${firstName} ${lastName}`);
-        const result = await search("/api/optometrist/search", { firstName, lastName });
+        console.log(`Fetching optometrists by name: ${safeFirstName} ${safeLastName}`);
+        const result = await search("/api/optometrist/search", { firstName: safeFirstName, lastName: safeLastName });
         if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
         }
 
         return undefined;
     } catch (error) {
-        console.error(`Error searching for optometrist ID for ${firstName} ${lastName}:`, error);
+        console.error(`Error searching for optometrist ID for ${safeFirstName} ${safeLastName}:`, error);
         throw error;
     }
 }
