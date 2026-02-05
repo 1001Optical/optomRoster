@@ -2,6 +2,127 @@ import {optomData} from "@/types/types";
 import type { Client, InArgs } from "@libsql/client";
 import {dbAll, dbExecute, getDB} from "@/utils/db/db";
 
+const ROSTER_ANY_CHANGE_TRIGGER_SQL = `
+CREATE TRIGGER roster_any_change
+    AFTER UPDATE ON ROSTER
+    WHEN
+        OLD.employeeId   IS NOT NEW.employeeId OR
+        OLD.firstName IS NOT NEW.firstName OR
+        OLD.lastName IS NOT NEW.lastName OR
+        OLD.locationId   IS NOT NEW.locationId OR
+        OLD.locationName IS NOT NEW.locationName OR
+        OLD.startTime    IS NOT NEW.startTime OR
+        OLD.endTime      IS NOT NEW.endTime
+BEGIN
+    INSERT INTO CHANGE_LOG (
+        rosterId, changeType, whenDetected, windowStart, windowEnd, diffSummary
+    )
+    VALUES (
+               NEW.id,
+               'roster_changed',
+               datetime('now'),
+               COALESCE(NEW.startTime, OLD.startTime),
+               COALESCE(NEW.endTime,   OLD.endTime),
+               json_object(
+                       'old', json_object(
+                       'employeeId',   OLD.employeeId,
+                       'firstName',    OLD.firstName,
+                       'lastName',     OLD.lastName,
+                       'locationId',   OLD.locationId,
+                       'locationName', OLD.locationName,
+                       'startTime',    OLD.startTime,
+                       'endTime',      OLD.endTime,
+                       'email',        OLD.email,
+                       'isLocum',      OLD.isLocum
+                              ),
+                       'new', json_object(
+                               'employeeId',   NEW.employeeId,
+                               'firstName',    NEW.firstName,
+                               'lastName',     NEW.lastName,
+                               'locationId',   NEW.locationId,
+                               'locationName', NEW.locationName,
+                               'startTime',    NEW.startTime,
+                               'endTime',      NEW.endTime,
+                               'email',        NEW.email,
+                               'isLocum',      NEW.isLocum
+                              )
+               )
+           );
+END;
+`;
+
+const ROSTER_INSERT_TRIGGER_SQL = `
+CREATE TRIGGER roster_insert_log
+    AFTER INSERT ON ROSTER
+BEGIN
+    INSERT INTO CHANGE_LOG (
+        rosterId, changeType, whenDetected, windowStart, windowEnd, diffSummary
+    )
+    VALUES (
+               NEW.id,
+               'roster_inserted',
+               datetime('now'),
+               NEW.startTime,
+               NEW.endTime,
+               json_object(
+                       'new', json_object(
+                       'employeeId',   NEW.employeeId,
+                       'firstName',    NEW.firstName,
+                       'lastName',     NEW.lastName,
+                       'locationId',   NEW.locationId,
+                       'locationName', NEW.locationName,
+                       'startTime',    NEW.startTime,
+                       'endTime',      NEW.endTime,
+                       'email',        NEW.email,
+                       'isLocum',      NEW.isLocum
+                              )
+               )
+           );
+END;
+`;
+
+const ROSTER_DELETE_TRIGGER_SQL = `
+CREATE TRIGGER roster_delete_log
+    AFTER DELETE ON ROSTER
+BEGIN
+    INSERT INTO CHANGE_LOG (
+        rosterId, changeType, whenDetected, windowStart, windowEnd, diffSummary
+    )
+    VALUES (
+               OLD.id,
+               'roster_deleted',
+               datetime('now'),
+               OLD.startTime,
+               OLD.endTime,
+               json_object(
+                       'old', json_object(
+                       'employeeId',   OLD.employeeId,
+                       'firstName',    OLD.firstName,
+                       'lastName',     OLD.lastName,
+                       'locationId',   OLD.locationId,
+                       'locationName', OLD.locationName,
+                       'startTime',    OLD.startTime,
+                       'endTime',      OLD.endTime,
+                       'email',        OLD.email,
+                       'isLocum',      OLD.isLocum
+                              )
+               )
+           );
+END;
+`;
+
+async function disableRosterChangeTriggers(db: Client) {
+    await dbExecute(db, "DROP TRIGGER IF EXISTS roster_any_change");
+    await dbExecute(db, "DROP TRIGGER IF EXISTS roster_insert_log");
+    await dbExecute(db, "DROP TRIGGER IF EXISTS roster_delete_log");
+}
+
+async function enableRosterChangeTriggers(db: Client) {
+    await dbExecute(db, ROSTER_ANY_CHANGE_TRIGGER_SQL);
+    await dbExecute(db, ROSTER_INSERT_TRIGGER_SQL);
+    await dbExecute(db, ROSTER_DELETE_TRIGGER_SQL);
+}
+
 /**
  * 날짜 문자열을 ISO 8601 형식으로 변환
  * "YYYY-MM-DD" -> "YYYY-MM-DDT00:00:00Z"
@@ -312,6 +433,8 @@ export async function deletePastDataForAllBranches(): Promise<number> {
     const db = await getDB();
     
     try {
+        await disableRosterChangeTriggers(db);
+
         // 오늘 날짜 계산 (UTC 기준)
         const now = new Date();
         const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -377,5 +500,11 @@ export async function deletePastDataForAllBranches(): Promise<number> {
     } catch (error) {
         console.error(`[CLEANUP] Error deleting past data:`, error);
         throw error;
+    } finally {
+        try {
+            await enableRosterChangeTriggers(db);
+        } catch (triggerError) {
+            console.error(`[CLEANUP] Failed to re-enable roster triggers:`, triggerError);
+        }
     }
 }
