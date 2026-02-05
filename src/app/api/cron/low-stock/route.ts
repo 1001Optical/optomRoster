@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
+import type { Credentials } from "google-auth-library";
 import fs from "node:fs";
 import path from "node:path";
 
