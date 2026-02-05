@@ -1,0 +1,9 @@
+{
+  "crons": [{
+    "path": "/api/cron/low-stock",
+    "schedule": "0 9 * * 4"
+  }, {
+    "path": "/api/cron/store-sync",
+    "schedule": "0 5 * * *"
+  }]
+}
