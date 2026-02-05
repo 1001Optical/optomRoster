@@ -114,7 +114,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         // 1) ExternalId 우선
         if (externalId) {
             console.log(`Fetching optometrists by externalId: ${externalId}`);
-            const result = await search("/api/optometrist/searchByExternaUserId", { externalUserId: externalId });
+            const result = await search("/api/optometrist/searchByExternalUserId", { externalUserId: externalId });
             if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
             }

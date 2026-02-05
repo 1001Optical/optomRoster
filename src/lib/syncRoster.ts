@@ -435,13 +435,12 @@ export async function deletePastDataForAllBranches(): Promise<number> {
     try {
         await disableRosterChangeTriggers(db);
 
-        // 오늘 날짜 계산 (UTC 기준)
+        // Sydney 기준 오늘 날짜 계산
+        const { formatInTimeZone } = await import("date-fns-tz");
         const now = new Date();
-        const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-        const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
-        
-        // 오늘 날짜의 시작 시간 (00:00:00Z) - 이전의 모든 데이터 삭제
-        const todayStart = `${todayStr}T00:00:00Z`;
+        const todayStr = formatInTimeZone(now, "Australia/Sydney", "yyyy-MM-dd");
+        // Sydney 00:00:00을 UTC로 변환
+        const todayStart = new Date(`${todayStr}T00:00:00+11:00`).toISOString();
         
         // 클린업 시작 시간 기록 (트리거로 생성된 CHANGE_LOG를 식별하기 위해)
         const cleanupStartTime = new Date().toISOString();
@@ -491,9 +490,9 @@ export async function deletePastDataForAllBranches(): Promise<number> {
         
         const deleteCount = deleteResult.rowsAffected ?? 0;
         if (deleteCount > 0) {
-            console.log(`[CLEANUP] Deleted ${deleteCount} roster entries before today (${todayStr}) for all branches`);
+            console.log(`[CLEANUP] Deleted ${deleteCount} roster entries before today (${todayStr}, Sydney) for all branches`);
         } else {
-            console.log(`[CLEANUP] No past roster entries found before today (${todayStr})`);
+            console.log(`[CLEANUP] No past roster entries found before today (${todayStr}, Sydney)`);
         }
         
         return deleteCount;

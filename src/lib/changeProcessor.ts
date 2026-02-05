@@ -817,6 +817,23 @@ async function checkOptometristAppointments(
     endTime: string
 ): Promise<boolean> {
     try {
+        const appointmentSummaryBaseUrl =
+            process.env.APPOINTMENT_API_BASE_URL ?? "https://api.1001optometrist.com";
+        const summaryUrl = `${appointmentSummaryBaseUrl}/api/appointments/optom-summary` +
+            `?start=${encodeURIComponent(startTime)}` +
+            `&end=${encodeURIComponent(endTime)}` +
+            `&branch=${encodeURIComponent(branchCode)}`;
+        const summaryResponse = await fetch(summaryUrl);
+        if (summaryResponse.ok) {
+            const summary = await summaryResponse.json();
+            const optometrist = summary?.optometrists?.find((o: { optomId?: number; days?: string[] }) => o?.optomId === optomId);
+            const hasAppointments = Array.isArray(optometrist?.days) && optometrist.days.includes(date);
+            if (hasAppointments) {
+                console.log(`[APPOINTMENT CHECK] Found appointment(s) via summary for OptomId ${optomId} on ${date} at ${branchCode}`);
+            }
+            return hasAppointments;
+        }
+
         // 날짜 범위를 브랜치 시간대로 변환
         const { fromZonedTime } = await import("date-fns-tz");
         
