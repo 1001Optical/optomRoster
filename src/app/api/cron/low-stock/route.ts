@@ -148,10 +148,10 @@ async function sendGmailHtml(to: string, subject: string, html: string) {
         throw new Error("Gmail API env not set");
     }
 
-    let tokens: unknown;
+    let tokens: Credentials;
     if (process.env.GMAIL_TOKEN_JSON) {
         try {
-            tokens = JSON.parse(process.env.GMAIL_TOKEN_JSON);
+            tokens = JSON.parse(process.env.GMAIL_TOKEN_JSON) as Credentials;
         } catch {
             throw new Error("GMAIL_TOKEN_JSON is not valid JSON");
         }
@@ -160,7 +160,7 @@ async function sendGmailHtml(to: string, subject: string, html: string) {
         if (!fs.existsSync(tokenPath)) {
             throw new Error("gmail_token.json not found");
         }
-        tokens = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
+        tokens = JSON.parse(fs.readFileSync(tokenPath, "utf8")) as Credentials;
     }
 
     const auth = new google.auth.OAuth2(
