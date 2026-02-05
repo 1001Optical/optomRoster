@@ -1,9 +1,54 @@
 {
   "crons": [{
     "path": "/api/cron/low-stock",
-    "schedule": "0 9 * * 4"
+    "schedule": "0 21 * * 3"
   }, {
-    "path": "/api/cron/store-sync",
-    "schedule": "0 5 * * *"
+    "path": "/api/cron/store-sync?store=BKT",
+    "schedule": "0 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=BON",
+    "schedule": "5 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=BOH",
+    "schedule": "10 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=BUR",
+    "schedule": "15 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=CHC",
+    "schedule": "20 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=CHW",
+    "schedule": "25 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=DON",
+    "schedule": "30 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=EMP",
+    "schedule": "35 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=ETG",
+    "schedule": "40 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=HOB",
+    "schedule": "45 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=HUR",
+    "schedule": "50 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=IND",
+    "schedule": "55 18 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=MQU",
+    "schedule": "0 19 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=PA1",
+    "schedule": "5 19 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=PEN",
+    "schedule": "10 19 * * *"
+  }, {
+    "path": "/api/cron/store-sync?store=TOP",
+    "schedule": "15 19 * * *"
   }]
 }
