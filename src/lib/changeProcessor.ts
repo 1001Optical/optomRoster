@@ -2,11 +2,11 @@ import {dbAll, dbExecute, dbGet, getDB} from "@/utils/db/db";
 import {ChangeLog, optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
 import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
-import type { PostEmailData } from "@/lib/postEmail";
+import { postEmail, type PostEmailData } from "@/lib/postEmail";
 import {OptomMap} from "@/data/stores";
 import {createOptomAccount} from "@/lib/createOptomAccount";
 import {chunk} from "@/lib/utils";
-import {createSecret} from "@/utils/crypto";
+import {getOptomateAuthSecret} from "@/utils/crypto";
 import {calculateSlots} from "@/utils/slots";
 import type { Client } from "@libsql/client";
 import {PostAppAdjust} from "@/lib/appointment";
@@ -106,7 +106,7 @@ export async function sendChangeToOptomateAPI(
         const batchPromises = batch.map(async (changeLog) => {
             try {
                 const diffSummary = changeLog.diffSummary ? JSON.parse(changeLog.diffSummary) : null;
-                const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary);
+                const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary, skipEmail);
                 // Appointment 충돌이 있으면 success=false로 처리하여 CHANGE_LOG를 유지 (재시도 가능하도록)
                 const hasConflicts = conflicts && conflicts.length > 0;
                 return { id: changeLog.id, success: !hasConflicts, summaries, mismatches, conflicts, hasConflicts };
@@ -530,7 +530,7 @@ async function processOptomData(
 }
 
 // 최적화된 callOptomateAPI 함수
-async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomData, new?: optomData}): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
+async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomData, new?: optomData}, skipEmail: boolean): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
     console.log(`[CHANGE_LOG] Processing ${changeLog.changeType} for rosterId: ${changeLog.rosterId}`);
     console.log(`diffSummary: `, diffSummary)
     
@@ -649,7 +649,18 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         }
     }
 
-    // 이메일 알림 비활성화: work history만 업데이트
+    // Locum 이메일 전송 (skipEmail=false일 때만)
+    if (!skipEmail && locumResults.length > 0) {
+        const emailPromises = locumResults.map(async (result) => {
+            if (result.emailData) {
+                await postEmail(result.emailData, !!result.isFirst);
+            }
+        });
+
+        await Promise.allSettled(emailPromises);
+    }
+
+    // work history 업데이트
     if (locumResults.length > 0) {
         const workHistoryPromises = locumResults.map(async (result) => {
             if (result.optomId && result.workHistory) {
@@ -732,6 +743,7 @@ async function getBranchTotalSlots(
     date: string
 ): Promise<number> {
     try {
+        const authHeader = getOptomateAuthSecret();
         // 날짜를 STARTDATETIME과 ENDDATETIME 형식으로 변환
         // 예: "2026-01-11" -> STARTDATETIME: "2026-01-11T00:00", ENDDATETIME: "2026-01-12T00:00"
         const startDateTime = `${date}T00:00`;
@@ -746,7 +758,7 @@ async function getBranchTotalSlots(
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "authorization": createSecret("1001_HO_JH", "10011001"),
+                "authorization": authHeader,
             },
             body: JSON.stringify({
                 SEARCH: {
@@ -817,6 +829,7 @@ async function checkOptometristAppointments(
     endTime: string
 ): Promise<boolean> {
     try {
+        const authHeader = getOptomateAuthSecret();
         const appointmentSummaryBaseUrl =
             process.env.APPOINTMENT_API_BASE_URL ?? "https://api.1001optometrist.com";
         const summaryUrl = `${appointmentSummaryBaseUrl}/api/appointments/optom-summary` +
@@ -884,7 +897,7 @@ async function checkOptometristAppointments(
         const response = await fetch(url, {
             headers: {
                 "Content-Type": "application/json",
-                "authorization": createSecret("1001_HO_JH", "10011001"),
+                "authorization": authHeader,
             },
         });
 
@@ -926,6 +939,7 @@ async function getOptomateRosterSlots(
     date: string
 ): Promise<number> {
     try {
+        const authHeader = getOptomateAuthSecret();
         // Optomate API에서 해당 날짜의 로스터 정보 가져오기
         // 날짜 범위를 브랜치 시간대로 변환
         const { fromZonedTime } = await import("date-fns-tz");
@@ -965,7 +979,7 @@ async function getOptomateRosterSlots(
             {
                 headers: {
                     "Content-Type": "application/json",
-                    "authorization": createSecret("1001_HO_JH", "10011001"),
+                    "authorization": authHeader,
                 },
             }
         );

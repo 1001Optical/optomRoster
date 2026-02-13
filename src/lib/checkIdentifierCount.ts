@@ -1,4 +1,4 @@
-import {createSecret} from "@/utils/crypto";
+import {getOptomateAuthSecret} from "@/utils/crypto";
 
 const createIdentifier = (g: string, s: string) => g[0]+s[0]
 
@@ -16,6 +16,8 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
     console.log(`Given name: ${givenName}, Surname: ${surname}`);
     
     try {
+        const authHeader = getOptomateAuthSecret();
+
         if (!givenName || !surname) {
             throw new Error("Both givenName and surname are required");
         }
@@ -34,7 +36,7 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
         const response = await fetch(url, {
             headers: {
                 'Content-Type': 'application/json',
-                "authorization": createSecret("1001_HO_JH", "10011001"),
+                "authorization": authHeader,
             }
         });
 

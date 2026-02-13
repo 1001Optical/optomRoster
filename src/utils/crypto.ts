@@ -4,4 +4,15 @@ const createSecret: (username: string, password?: string) => string = (username:
     return `Basic ${toBase64(`${username}:${password ?? ""}`)}`;
 };
 
-export {createSecret};
+const getOptomateAuthSecret = (): string => {
+    const username = process.env.OPTOMATE_API_USERNAME;
+    const password = process.env.OPTOMATE_API_PASSWORD;
+
+    if (!username || !password) {
+        throw new Error("Missing OPTOMATE_API_USERNAME or OPTOMATE_API_PASSWORD environment variable");
+    }
+
+    return createSecret(username, password);
+};
+
+export {createSecret, getOptomateAuthSecret};

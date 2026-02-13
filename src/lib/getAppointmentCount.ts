@@ -1,4 +1,4 @@
-import { createSecret } from "@/utils/crypto";
+import { getOptomateAuthSecret } from "@/utils/crypto";
 import { OptomMap } from "@/data/stores";
 import { fromZonedTime } from "date-fns-tz";
 import { dbExecute, dbGet, getDB } from "@/utils/db/db";
@@ -182,10 +182,11 @@ export async function getAppointmentCount(
   console.log(`[APPOINTMENT COUNT] URL: ${url}`);
 
   try {
+    const authHeader = getOptomateAuthSecret();
     const response = await fetch(url, {
       headers: {
         "Content-Type": "application/json",
-        authorization: createSecret("1001_HO_JH", "10011001"),
+        authorization: authHeader,
       },
     });
 

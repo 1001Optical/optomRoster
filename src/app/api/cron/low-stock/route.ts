@@ -3,12 +3,9 @@ import { google } from "googleapis";
 import type { Credentials } from "google-auth-library";
 import fs from "node:fs";
 import path from "node:path";
+import { getOptomateAuthSecret } from "@/utils/crypto";
 
 export const runtime = "nodejs";
-
-const toBase64 = (str: string) => Buffer.from(str, "utf8").toString("base64");
-const createSecret = (username: string, password?: string) =>
-    `Basic ${toBase64(`${username}:${password ?? ""}`)}`;
 
 const toBase64Url = (str: string) =>
     Buffer.from(str)
@@ -19,9 +16,8 @@ const toBase64Url = (str: string) =>
 
 const nowIso = () => new Date().toISOString();
 
-const BASE_URL = "https://1001optdb.habitat3.net:12443/OptomateTouch/OData4/";
-const TOKEN = createSecret("1001_HO_JH", "10011001");
-const TO_EMAILS = "shannon@1001optical.com.au";
+const BASE_URL = process.env.OPTOMATE_READONLY_API_URL || "https://1001-api-readonly.habitat3.net:12443/OptomateTouch/OData4/";
+const TO_EMAILS = process.env.LOW_STOCK_ALERT_TO || "shannon@1001optical.com.au";
 
 const ITEMS: { barcode: string; alertPoint: number }[] = [
     { barcode: "20015195", alertPoint: 60 },
@@ -62,6 +58,7 @@ function odataEscape(str: string) {
 }
 
 async function fetchOtherItemsForBarcodes(): Promise<OtherItemsResponse> {
+    const authHeader = getOptomateAuthSecret();
     const filter = ITEMS.map(({ barcode }) => `BARCODE eq '${odataEscape(barcode)}'`).join(" or ");
     const select = ["ID", "BARCODE", "DESCRIPTION"].join(",");
     const expandUnfiltered =
@@ -76,7 +73,7 @@ async function fetchOtherItemsForBarcodes(): Promise<OtherItemsResponse> {
     const headers = {
         Accept: "application/json",
         "Content-Type": "application/json",
-        Authorization: TOKEN,
+        Authorization: authHeader,
     };
 
     const res = await fetch(url, { headers });

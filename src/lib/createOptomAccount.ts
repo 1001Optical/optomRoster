@@ -1,5 +1,4 @@
 import {createSecret} from "@/utils/crypto";
-import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
 import {apiFetch} from "@/services/apiFetch";
 
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
@@ -40,9 +39,9 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             throw new Error(`Invalid email format: ${email}`);
         }
         
-        console.log("Checking existing identifier count...");
-        const identifier = await checkIdentifierCount(givenName, surname);
-        console.log(`Current identifier count: ${identifier}`);
+        // Skip identifier pre-check; rely on API conflict responses to increment.
+        const identifier = 0;
+        console.log("Skipping identifier count check; starting from 1");
         
         const username = `${(givenName[0]+surname[0]+surname[1]).toUpperCase()}`;
         console.log(`Base username: ${username}`);
@@ -59,7 +58,7 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
         let i = (identifier ?? 0) + 1;
         let u = 25;
         let attemptCount = 0;
-        const maxAttempts = 20; // 무한 루프 방지
+        const maxAttempts = 100; // allow more attempts when skipping identifier pre-check
         
         console.log(`Starting account creation attempts (max ${maxAttempts})...`);
         
