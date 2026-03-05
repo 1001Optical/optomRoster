@@ -62,6 +62,7 @@ export interface AppointmentConflict {
     startTime: string;
     endTime: string;
     changeType: 'roster_deleted' | 'roster_changed';
+    isApiError?: boolean; // true: API 오류로 확인 불가 (CHANGE_LOG 삭제), false/undefined: 실제 예약 존재 (CHANGE_LOG 유지)
 }
 
 // ---- 외부 API 전송 함수 ----
@@ -107,9 +108,10 @@ export async function sendChangeToOptomateAPI(
             try {
                 const diffSummary = changeLog.diffSummary ? JSON.parse(changeLog.diffSummary) : null;
                 const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary);
-                // Appointment 충돌이 있으면 success=false로 처리하여 CHANGE_LOG를 유지 (재시도 가능하도록)
+                // 실제 예약이 있는 경우만 CHANGE_LOG 유지 (API 오류는 재시도 불필요하므로 삭제)
+                const hasRealConflicts = conflicts?.some(c => !c.isApiError) ?? false;
                 const hasConflicts = conflicts && conflicts.length > 0;
-                return { id: changeLog.id, success: !hasConflicts, summaries, mismatches, conflicts, hasConflicts };
+                return { id: changeLog.id, success: !hasRealConflicts, summaries, mismatches, conflicts, hasConflicts };
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 console.error(`❌ [CHANGE_LOG] Failed to process change log ${changeLog.id} (rosterId: ${changeLog.rosterId}):`, errorMessage);
@@ -124,8 +126,8 @@ export async function sendChangeToOptomateAPI(
         batchResults.forEach(result => {
             if (result.status === 'fulfilled') {
                 const value = result.value;
-                // 성공했고 충돌이 없는 경우에만 CHANGE_LOG 삭제
-                if (value?.success && !value.hasConflicts) {
+                // 실제 예약 충돌이 없는 경우 CHANGE_LOG 삭제 (API 오류 포함)
+                if (value?.success) {
                     successIds.push(value.id);
                 }
                 // 요약 정보는 항상 수집 (충돌이 있어도 로그는 남김)
@@ -374,7 +376,7 @@ async function processOptomData(
         // INACTIVE로 설정하기 전에 appointment 확인 (deleted 또는 old인 경우)
         let appointmentConflict: AppointmentConflict | undefined = undefined;
         if (key !== "new") {
-            const hasAppointments = await checkOptometristAppointments(
+            const { hasAppointments, isApiError } = await checkOptometristAppointments(
                 OptomateApiUrl,
                 id!,
                 branchInfo.OptCode,
@@ -382,7 +384,7 @@ async function processOptomData(
                 optomData.startTime,
                 optomData.endTime
             );
-            
+
             if (hasAppointments) {
                 console.error(
                     `❌ [APPOINTMENT CONFLICT] Cannot set AppAdjust to INACTIVE: ` +
@@ -401,7 +403,8 @@ async function processOptomData(
                     email: optomData.email,
                     startTime: optomData.startTime,
                     endTime: optomData.endTime,
-                    changeType: key === "deleted" ? "roster_deleted" : "roster_changed"
+                    changeType: key === "deleted" ? "roster_deleted" : "roster_changed",
+                    isApiError,
                 };
                 
                 // Appointment가 있으면 AppAdjust 전송하지 않고 에러만 반환
@@ -815,7 +818,7 @@ async function checkOptometristAppointments(
     date: string,
     startTime: string,
     endTime: string
-): Promise<boolean> {
+): Promise<{ hasAppointments: boolean; isApiError: boolean }> {
     try {
         // 날짜 범위를 브랜치 시간대로 변환
         const { fromZonedTime } = await import("date-fns-tz");
@@ -874,28 +877,28 @@ async function checkOptometristAppointments(
         if (!response.ok) {
             const errorText = await response.text().catch(() => '');
             console.error(`[APPOINTMENT CHECK] Failed to check appointments: ${response.status} ${response.statusText}`, errorText);
-            // API 호출 실패 시 false 반환 (에러가 발생했으므로 conflict로 처리하지 않음)
-            // 실제 appointment가 있는지 확인할 수 없으므로 AppAdjust 전송을 진행
-            return false;
+            // API 호출 실패 시 삭제 차단 (확인 불가 = 안전하게 막기)
+            // isApiError=true → conflict 기록되지만 CHANGE_LOG는 삭제됨 (재시도 불필요)
+            return { hasAppointments: true, isApiError: true };
         }
 
         const result = await response.json();
         const appointments = result.value || [];
         
         const hasAppointments = appointments.length > 0;
-        
+
         if (hasAppointments) {
             console.log(`[APPOINTMENT CHECK] Found ${appointments.length} appointment(s) for OptomId ${optomId} on ${date} at ${branchCode}`);
         } else {
             console.log(`[APPOINTMENT CHECK] No appointments found for OptomId ${optomId} on ${date} at ${branchCode}`);
         }
-        
-        return hasAppointments;
+
+        return { hasAppointments, isApiError: false };
     } catch (error) {
         console.error(`[APPOINTMENT CHECK] Error checking appointments: ${error instanceof Error ? error.message : String(error)}`, error);
-        // 에러 발생 시 false 반환 (에러가 발생했으므로 conflict로 처리하지 않음)
-        // 실제 appointment가 있는지 확인할 수 없으므로 AppAdjust 전송을 진행
-        return false;
+        // 예외 발생 시 삭제 차단 (확인 불가 = 안전하게 막기)
+        // isApiError=true → conflict 기록되지만 CHANGE_LOG는 삭제됨 (재시도 불필요)
+        return { hasAppointments: true, isApiError: true };
     }
 }
 
