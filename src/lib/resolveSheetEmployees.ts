@@ -19,9 +19,6 @@ interface EHShift {
     employeeName: string;
 }
 
-// 이름 → employeeId 캐시 (요청 내 재사용)
-const nameCache = new Map<string, number | null>();
-
 /**
  * /employee 엔드포인트에서 직원 목록 가져오기 (정규직 ~100명)
  */
@@ -58,7 +55,6 @@ async function fetchEmployeesFromRoster(): Promise<EHEmployee[]> {
     const seen = new Map<number, EHEmployee>();
     for (const shift of res.data) {
         if (shift.employeeId && shift.employeeName && !seen.has(shift.employeeId)) {
-            // employeeName을 firstName으로 사용 (예: "Xibei Charlotte Li")
             seen.set(shift.employeeId, { id: shift.employeeId, firstName: shift.employeeName });
         }
     }
@@ -74,7 +70,7 @@ function normalizeName(name: string): string {
 
 /**
  * EH 직원 이름에서 매칭 후보 추출
- * "Xibei Charlotte Li" → ["xibei charlotte li", "xibei charlotte", "xibei", "charlotte", "li"]
+ * "Xibei Charlotte Li" → ["xibei charlotte li", "xibei", "charlotte", "li"]
  * "Jenny_Locum Kim"    → ["jenny kim", "jenny", "kim"]
  */
 function getEHNameCandidates(emp: EHEmployee): string[] {
@@ -107,9 +103,9 @@ function getEHNameCandidates(emp: EHEmployee): string[] {
 
 /**
  * 시트 이름 목록 → { name: employeeId } 매핑
- * 1) /employee 목록 (정규직)
- * 2) 로스터 시프트 (Locum 포함)
- * 두 소스를 합쳐서 매칭
+ * 1) DB 커스텀 매핑 우선
+ * 2) EH /employee 목록 (정규직)
+ * 3) EH 로스터 시프트 (Locum 포함)
  */
 export async function resolveEmployeeNames(
     names: string[]
@@ -117,18 +113,8 @@ export async function resolveEmployeeNames(
     const uniqueNames = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
     const result = new Map<string, number | null>();
 
-    const uncached: string[] = [];
-    for (const name of uniqueNames) {
-        if (nameCache.has(name)) {
-            result.set(name, nameCache.get(name)!);
-        } else {
-            uncached.push(name);
-        }
-    }
-
-    if (uncached.length === 0) return result;
-
-    // DB 커스텀 매핑 먼저 적용
+    // 1. DB 커스텀 매핑 먼저 적용
+    let needsEHLookup = uniqueNames;
     try {
         const db = await getDB();
         const dbMappings = await dbAll<DBMapping>(
@@ -137,28 +123,26 @@ export async function resolveEmployeeNames(
         );
         const dbMap = new Map(dbMappings.map((r) => [r.sheet_name.trim().toLowerCase(), r.employee_id]));
 
-        const stillUncached: string[] = [];
-        for (const name of uncached) {
+        const notInDB: string[] = [];
+        for (const name of uniqueNames) {
             const mapped = dbMap.get(name.trim().toLowerCase());
             if (mapped != null) {
-                nameCache.set(name, mapped);
                 result.set(name, mapped);
                 console.log(`[RESOLVE] ✅ "${name}" → employeeId ${mapped} (DB mapping)`);
             } else {
-                stillUncached.push(name);
+                notInDB.push(name);
             }
         }
-        uncached.length = 0;
-        uncached.push(...stillUncached);
+        needsEHLookup = notInDB;
     } catch (e) {
         console.warn("[RESOLVE] DB mapping lookup failed:", e);
     }
 
-    if (uncached.length === 0) return result;
+    if (needsEHLookup.length === 0) return result;
 
-    console.log(`[RESOLVE] Looking up ${uncached.length} employee name(s) from EH...`);
+    // 2. EH API로 나머지 이름 조회
+    console.log(`[RESOLVE] Looking up ${needsEHLookup.length} employee name(s) from EH...`);
 
-    // 두 소스 병렬 조회
     const [empList, rosterList] = await Promise.all([
         fetchEmployeeList(),
         fetchEmployeesFromRoster(),
@@ -171,7 +155,7 @@ export async function resolveEmployeeNames(
 
     console.log(`[RESOLVE] Sources: /employee=${empList.length}, roster=${rosterList.length}, total unique=${employees.length}`);
 
-    for (const name of uncached) {
+    for (const name of needsEHLookup) {
         const normalized = normalizeName(name);
 
         const match = employees.find((emp) => {
@@ -180,9 +164,6 @@ export async function resolveEmployeeNames(
         });
 
         const resolvedId = match ? match.id : null;
-        if (resolvedId !== null) {
-            nameCache.set(name, resolvedId); // null은 캐싱하지 않음 (다음 요청 때 DB 재확인)
-        }
         result.set(name, resolvedId);
 
         if (resolvedId) {
