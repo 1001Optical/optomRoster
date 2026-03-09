@@ -7,6 +7,7 @@ import {getList, refresh} from "@/utils/fetch_utils";
 import IooICalendar from "@/components/IooICalendar";
 import { DateRange } from "react-day-picker";
 import { RiRefreshLine } from "react-icons/ri";
+import { RiUploadCloud2Line } from "react-icons/ri";
 import IooISelect from "@/components/IooISelect";
 import {OptomMap} from "@/data/stores";
 import {SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
@@ -44,6 +45,8 @@ export default function Home() {
     const [slotMismatches, setSlotMismatches] = useState<SlotMismatch[]>([]);
     const [appointmentConflicts, setAppointmentConflicts] = useState<AppointmentConflict[]>([]);
     const [rangeType] = useState<"weekly" | "monthly">("weekly")
+    const [sheetSyncing, setSheetSyncing] = useState<boolean>(false);
+    const [sheetSyncResult, setSheetSyncResult] = useState<{ synced: number; skipped: number; errors: string[] } | null>(null);
     const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>(getCurrentWeekRange())
 
     useEffect(() => {
@@ -103,6 +106,31 @@ export default function Home() {
                 className="max-w-md"
             />
             <button
+                className="h-8 px-3 border border-blue-300 rounded-md cursor-pointer flex justify-center items-center gap-1.5 hover:bg-blue-50 disabled:opacity-50 text-blue-700 text-sm font-medium"
+                title="Sync from Google Sheet to Employment Hero"
+                onClick={async () => {
+                    setSheetSyncing(true);
+                    setSheetSyncResult(null);
+                    try {
+                        const res = await fetch("/api/roster/sheet-sync");
+                        const json = await res.json();
+                        if (res.ok && json.data) {
+                            setSheetSyncResult(json.data);
+                        } else {
+                            setSheetSyncResult({ synced: 0, skipped: 0, errors: [json.error ?? json.message ?? "Unknown error"] });
+                        }
+                    } catch (err) {
+                        setSheetSyncResult({ synced: 0, skipped: 0, errors: [err instanceof Error ? err.message : "Sync failed"] });
+                    } finally {
+                        setSheetSyncing(false);
+                    }
+                }}
+                disabled={sheetSyncing || loading}
+            >
+                <RiUploadCloud2Line className={sheetSyncing ? "animate-pulse" : ""} />
+                {sheetSyncing ? "Syncing..." : "Sync Sheet"}
+            </button>
+            <button
                 className="size-8 border border-gray-300 rounded-md cursor-pointer flex justify-center items-center hover:bg-gray-100 disabled:opacity-50"
                 onClick={async () => {
                     console.log("=== Manual Refresh Triggered ===");
@@ -159,6 +187,24 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {sheetSyncResult && (
+            <div className={`w-full p-3 border rounded-md text-sm ${sheetSyncResult.errors.length > 0 && sheetSyncResult.synced === 0 ? "bg-red-50 border-red-200 text-red-800" : "bg-blue-50 border-blue-200 text-blue-800"}`}>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <span className="font-medium">Sheet Sync: </span>
+                        {`${sheetSyncResult.synced} synced, ${sheetSyncResult.skipped} skipped`}
+                        {sheetSyncResult.errors.length > 0 && (
+                            <ul className="mt-1 list-disc list-inside text-red-700 text-xs">
+                                {sheetSyncResult.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}
+                                {sheetSyncResult.errors.length > 5 && <li>...and {sheetSyncResult.errors.length - 5} more</li>}
+                            </ul>
+                        )}
+                    </div>
+                    <button className="text-gray-400 hover:text-gray-600 ml-4" onClick={() => setSheetSyncResult(null)}>✕</button>
+                </div>
+            </div>
+        )}
 
         {error && (
             <div className="w-full p-4 bg-red-50 border border-red-200 rounded-md">

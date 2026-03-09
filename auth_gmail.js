@@ -3,7 +3,10 @@ import readline from "readline";
 import { google } from "googleapis";
 import "dotenv/config";
 
-const SCOPES = ["https://www.googleapis.com/auth/gmail.send"];
+const SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+];
 
 const oAuth2Client = new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
