@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getWeekNumber } from "@/utils/time";
 import { OptomMap } from "@/data/stores";
+import { getSettingValue } from "@/app/api/settings/route";
 
 export interface SheetShift {
     locationId: number;
@@ -94,8 +95,10 @@ function createGoogleAuth() {
  * @param weekNumber 주차 번호 (생략 시 현재 주차 자동 계산)
  */
 export async function readGoogleSheet(weekNumber?: number): Promise<SheetShift[]> {
-    const sheetId = process.env.GOOGLE_SHEET_ID;
-    if (!sheetId) throw new Error("Missing GOOGLE_SHEET_ID env var");
+    // DB 설정 우선, 없으면 env var fallback
+    const dbSheetId = await getSettingValue("google_sheet_id");
+    const sheetId = dbSheetId || process.env.GOOGLE_SHEET_ID;
+    if (!sheetId) throw new Error("Google Sheet ID가 설정되지 않았습니다. /sync 페이지에서 설정해주세요.");
 
     const week = weekNumber ?? getWeekNumber(new Date());
     const sheetName = `NSW - W${week}`;
