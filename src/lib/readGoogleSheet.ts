@@ -184,6 +184,12 @@ export async function readGoogleSheet(weekNumber?: number): Promise<SheetShift[]
             // 이름 또는 날짜 또는 시간이 없으면 skip
             if (!employeeName || !date || !startRaw || !endRaw) continue;
 
+            // 구글 시트 수식 오류(#REF!, #N/A 등) skip
+            if (employeeName.startsWith("#")) {
+                console.warn(`[SHEET] Skipping formula error "${employeeName}" at ${locationInfo.storeName} on ${date}`);
+                continue;
+            }
+
             const startTime = parseSheetTime(startRaw);
             const endTime = parseSheetTime(endRaw);
 
