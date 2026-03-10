@@ -11,6 +11,14 @@ import {calculateSlots} from "@/utils/slots";
 import type { Client } from "@libsql/client";
 import {PostAppAdjust} from "@/lib/appointment";
 
+/** Optomate API Basic Auth 헤더 — env var 없으면 즉시 에러 */
+function getOptomateAuthHeader(): string {
+    const user = process.env.OPTOMATE_USERNAME;
+    const pass = process.env.OPTOMATE_PASSWORD;
+    if (!user || !pass) throw new Error("Missing OPTOMATE_USERNAME or OPTOMATE_PASSWORD env var");
+    return createSecret(user, pass);
+}
+
 // 처리된 데이터 요약 타입
 interface ProcessedSummary {
     name: string;
@@ -502,7 +510,7 @@ async function processOptomData(
                     rosterEnd: APP_ADJUST.ADJUST_FINISH,
                     storeTemplet: template?.info ?? "",
                     optomateId: username,
-                    optomatePw: username ? '1001' : undefined,
+                    optomatePw: username ? process.env.OPTOMATE_DEFAULT_USER_PW : undefined,
                 };
             }
         }
@@ -749,7 +757,7 @@ async function getBranchTotalSlots(
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "authorization": createSecret("1001_HO_JH", "10011001"),
+                "authorization": getOptomateAuthHeader(),
             },
             body: JSON.stringify({
                 SEARCH: {
@@ -870,7 +878,7 @@ async function checkOptometristAppointments(
         const response = await fetch(url, {
             headers: {
                 "Content-Type": "application/json",
-                "authorization": createSecret("1001_HO_JH", "10011001"),
+                "authorization": getOptomateAuthHeader(),
             },
         });
 
@@ -951,7 +959,7 @@ async function getOptomateRosterSlots(
             {
                 headers: {
                     "Content-Type": "application/json",
-                    "authorization": createSecret("1001_HO_JH", "10011001"),
+                    "authorization": getOptomateAuthHeader(),
                 },
             }
         );
