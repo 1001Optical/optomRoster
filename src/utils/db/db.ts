@@ -69,56 +69,49 @@ async function runMigrations(db: Client) {
         return;
     }
 
-    // 기존 테이블 확인
-    const existingTablesResult = await db.execute({
-        sql: "SELECT name FROM sqlite_master WHERE type='table'",
+    // 실행 기록 테이블 생성 (없으면)
+    await db.execute({
+        sql: `CREATE TABLE IF NOT EXISTS schema_migrations (
+            filename   TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`,
         args: [],
     });
-    const existingTables = existingTablesResult.rows
-        .map((row) => ({ name: row.name as string }))
-        .filter((row) => typeof row.name === 'string');
 
-    // 필수 테이블 확인
-    const requiredTables = ['ROSTER', 'CHANGE_LOG', 'STORE_INFO'];
-    requiredTables.filter(table =>
-        !existingTables.some(t => t.name === table)
-    );
+    // 이미 실행된 마이그레이션 파일 목록
+    const appliedResult = await db.execute({
+        sql: 'SELECT filename FROM schema_migrations',
+        args: [],
+    });
+    const applied = new Set(appliedResult.rows.map(r => r.filename as string));
 
     for (const file of migrationFiles) {
+        if (applied.has(file)) {
+            console.log(`[MIGRATION] skip: ${file}`);
+            continue;
+        }
+
         const filePath = path.join(migrationsDir, file);
         const sql = fs.readFileSync(filePath, 'utf8');
 
         // -- Up 섹션만 실행 (-- Down 섹션은 무시)
         const upSection = sql.split('-- Down')[0];
-
-        // 개선된 SQL 파싱
         const statements = parseSQLStatements(upSection);
 
         for (let i = 0; i < statements.length; i++) {
             const statement = statements[i];
             if (statement.trim()) {
-                try {
-                    await db.execute({ sql: statement, args: [] });
-                } catch (error) {
-                    console.error(`Error executing statement ${i + 1} in ${file}:`, error);
-
-                    // 테이블이 이미 존재하는 경우 무시
-                    if (error instanceof Error &&
-                        (error.message.includes('already exists') ||
-                            error.message.includes('duplicate column name'))) {
-                        continue;
-                    }
-                    throw error;
-                }
+                await db.execute({ sql: statement, args: [] });
             }
         }
-    }
 
-    // 마이그레이션 후 테이블 확인
-    await db.execute({
-        sql: "SELECT name FROM sqlite_master WHERE type='table'",
-        args: [],
-    });
+        // 실행 완료 기록
+        await db.execute({
+            sql: 'INSERT INTO schema_migrations (filename) VALUES (?)',
+            args: [file],
+        });
+        console.log(`[MIGRATION] applied: ${file}`);
+    }
 }
 
 export function parseSQLStatements(sql: string): string[] {
