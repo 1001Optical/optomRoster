@@ -87,7 +87,7 @@ export default function Home() {
     <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center">
       <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
         <div className="w-full flex justify-between items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-800">Roster</h1>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Roster</h1>
 
           <div className="flex justify-end gap-3">
             <IooISelect
@@ -103,7 +103,7 @@ export default function Home() {
                 className="max-w-md"
             />
             <button
-                className="size-8 border border-gray-300 rounded-md cursor-pointer flex justify-center items-center hover:bg-gray-100 disabled:opacity-50"
+                className="size-8 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer flex justify-center items-center hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
                 onClick={async () => {
                     console.log("=== Manual Refresh Triggered ===");
                     setLoading(true);

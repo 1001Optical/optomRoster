@@ -13,7 +13,7 @@ const Table = React.memo(({ data = {}, loading }: TableProps) => {
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div className="w-full h-full overflow-x-auto border border-gray-300">
+    <div className="w-full h-full overflow-x-auto border border-gray-300 dark:border-gray-600">
       <table className="min-w-full border-collapse">
         {/* 스토어 이름 행 */}
         <thead className={"sticky top-0 z-10"}>
@@ -21,14 +21,14 @@ const Table = React.memo(({ data = {}, loading }: TableProps) => {
           <tr>
             <th
                 key={"store"}
-                className="bg-gray-100 font-semibold text-center py-3 px-4"
+                className="bg-gray-100 dark:bg-gray-800 font-semibold text-center py-3 px-4"
             >
               Store
             </th>
             {daysOfWeek.map((day, index) => (
-              <th 
+              <th
                 key={index}
-                className="sticky top-0 z-10  bg-gray-100 font-semibold text-center py-3 px-4"
+                className="sticky top-0 z-10 bg-gray-100 dark:bg-gray-800 font-semibold text-center py-3 px-4"
               >
                 {day}
               </th>
@@ -56,7 +56,7 @@ const Table = React.memo(({ data = {}, loading }: TableProps) => {
                 <tr key={key+"store"}>
                   <td
                       key={key}
-                      className="py-2 px-3 border-b border-gray-200 text-center w-[90px] h-[52px]"
+                      className="py-2 px-3 border-b border-gray-200 dark:border-gray-700 text-center w-[90px] h-[52px]"
                   >
                     {store.StoreName}
                   </td>
@@ -65,7 +65,7 @@ const Table = React.memo(({ data = {}, loading }: TableProps) => {
                           key={dayIndex}
                           className={"w-[90px] h-[52px]"}
                       >
-                        <div className={"text-center flex flex-col justify-start items-start w-full h-full border-b border-gray-200"}>
+                        <div className={"text-center flex flex-col justify-start items-start w-full h-full border-b border-gray-200 dark:border-gray-700"}>
                         {
                           data[key][dayIndex]?.map((v,i) => (
                               <div key={i} className={cn("py-2 px-3 w-full", v.name ? "" : "bg-red-300")}>
