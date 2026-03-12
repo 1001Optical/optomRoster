@@ -1,3 +1,7 @@
+import { createLogger, maskEmail } from "@/lib/logger";
+
+const logger = createLogger('PostEmail');
+
 export interface PostEmailData {
     email: string
     "lastName": string
@@ -12,12 +16,9 @@ export interface PostEmailData {
 
 export const postEmail = async (data: PostEmailData | undefined, isFirst: boolean) => {
     if(!data) return;
-    
-    console.log(`  📧 [EMAIL] Sending ${isFirst ? 'first-time' : 'existing'} user email`);
-    console.log(`     └─ To: ${data.email}`);
-    console.log(`     └─ Store: ${data.storeName}`);
-    console.log(`     └─ Date: ${data.rosterDate}`);
-    
+
+    logger.info(`Sending email`, { type: isFirst ? 'first-time' : 'existing', email: maskEmail(data.email), store: data.storeName, date: data.rosterDate });
+
     try {
         // 데이터 검증
         if (!data.email || !data.email.includes('@')) {
@@ -29,46 +30,42 @@ export const postEmail = async (data: PostEmailData | undefined, isFirst: boolea
         }
 
         const webhookUrl = isFirst ? process.env.MAKE_WEBHOOK_FIRST : process.env.MAKE_WEBHOOK_EXIST;
-        
+
         if (!webhookUrl) {
             throw new Error(`Missing webhook URL for ${isFirst ? 'first' : 'existing'} user`);
         }
 
-        console.log(`     └─ Webhook URL: ${webhookUrl}`);
-        console.log(`     └─ Request Body:`, JSON.stringify(data, null, 2));
-
         const response = await fetch(webhookUrl, {
             method: "POST",
-            headers: { 
-                "content-type": "application/json" 
+            headers: {
+                "content-type": "application/json"
             },
             body: JSON.stringify(data),
         });
 
-        console.log(`     └─ Response Status: ${response.status} ${response.statusText}`);
+        logger.debug(`Webhook response`, { status: response.status, statusText: response.statusText });
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`     └─ Error Response:`, errorText);
+            logger.error(`Webhook request failed`, { status: response.status, statusText: response.statusText });
             throw new Error(`Email webhook request failed: ${response.status} ${response.statusText}`);
         }
 
         const responseText = await response.text();
         if (responseText) {
             try {
-                const responseJson = JSON.parse(responseText);
-                console.log(`     └─ Response Body:`, JSON.stringify(responseJson, null, 2));
+                JSON.parse(responseText); // validate JSON
+                logger.debug(`Webhook response received`);
             } catch {
-                console.log(`     └─ Response Body:`, responseText);
+                logger.debug(`Webhook response received (non-JSON)`);
             }
         }
 
-        // ✅ Locum email 결과 요약 로그 (필요한 최소 정보만)
-        console.log(`[LOCUM EMAIL] ok email=${data.email} store=${data.storeName} date=${data.rosterDate} isFirst=${isFirst} status=${response.status}`);
-        
+        logger.info(`Email sent successfully`, { email: maskEmail(data.email), store: data.storeName, date: data.rosterDate, isFirst, status: response.status });
+
         return response;
     } catch (error) {
-        console.error(`[LOCUM EMAIL] fail email=${data?.email} store=${data?.storeName} date=${data?.rosterDate} isFirst=${isFirst} reason=${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Email send failed`, { email: maskEmail(data?.email ?? ''), store: data?.storeName, date: data?.rosterDate, isFirst, error: error instanceof Error ? error.message : String(error) });
         throw error;
     }
 }

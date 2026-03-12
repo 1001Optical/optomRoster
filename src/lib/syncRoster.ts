@@ -1,6 +1,9 @@
 import {optomData} from "@/types/types";
 import type { Client, InArgs } from "@libsql/client";
 import {dbAll, dbExecute, getDB} from "@/utils/db/db";
+import { createLogger, maskName } from "@/lib/logger";
+
+const logger = createLogger('SyncRoster');
 
 const ROSTER_ANY_CHANGE_TRIGGER_SQL = `
 CREATE TRIGGER roster_any_change
@@ -132,13 +135,13 @@ function convertToISO8601(dateStr: string): string {
     if (dateStr.includes('T')) {
         return dateStr;
     }
-    
+
     // YYYY-MM-DD 형식인 경우 ISO 형식으로 변환
     const dateMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
     if (dateMatch) {
         return `${dateMatch[1]}T00:00:00Z`;
     }
-    
+
     // 변환 실패 시 원본 반환 (에러는 나중에 발생)
     return dateStr;
 }
@@ -151,7 +154,7 @@ function convertEndDateToISO8601(dateStr: string): string {
     if (dateStr.includes('T')) {
         return dateStr;
     }
-    
+
     // YYYY-MM-DD 형식인 경우 다음 날 00:00:00Z로 변환
     const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (dateMatch) {
@@ -159,24 +162,24 @@ function convertEndDateToISO8601(dateStr: string): string {
         const yearNum = parseInt(year, 10);
         const monthNum = parseInt(month, 10);
         const dayNum = parseInt(day, 10);
-        
+
         // 다음 날 계산
         const nextDay = new Date(Date.UTC(yearNum, monthNum - 1, dayNum + 1));
         return nextDay.toISOString().split('.')[0] + 'Z'; // .000 제거
     }
-    
+
     // 변환 실패 시 원본 반환
     return dateStr;
 }
 
 export async function syncRoster(db: Client, incoming: optomData[], scope: { start: string, end: string, locationIds?: number[] }) {
     if (!Array.isArray(incoming)) {
-        console.error("incoming is not an array:", incoming);
+        logger.error("incoming is not an array", { type: typeof incoming });
         throw new Error("incoming data must be an array");
     }
-    
+
     const tx = await db.transaction("write");
-    
+
     try {
         const txExecute = (sql: string, args?: InArgs) =>
             tx.execute({ sql, args: args ?? [] });
@@ -188,11 +191,11 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
         // 날짜 범위를 ISO 8601 형식으로 변환
         const scopeStartISO = convertToISO8601(scope.start);
         const scopeEndISO = convertEndDateToISO8601(scope.end);
-        
+
         // 동기화한 브랜치의 locationId 추출 (중복 제거)
-        const syncedLocationIds = scope.locationIds || 
+        const syncedLocationIds = scope.locationIds ||
             [...new Set(incoming.map(v => v.locationId).filter(id => id != null))];
-        
+
         // 0) 과거 데이터 삭제: 동기화 시작 날짜 이전의 모든 데이터 삭제
         // [수정] 8~14일 동기화 시 1~7일 데이터가 사라지는 문제를 해결하기 위해 과거 데이터 삭제 로직 제거
         /*
@@ -203,9 +206,9 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                  WHERE startTime < ?
                    AND locationId IN (${locationPlaceholders})
             `).run(scopeStartISO, ...syncedLocationIds);
-            
+
             if (deletePastResult.changes > 0) {
-                console.log(`[SYNC] Deleted ${deletePastResult.changes} past roster entries before ${scope.start} (locations: ${syncedLocationIds.join(', ')})`);
+                logger.info(`Deleted past roster entries`, { count: deletePastResult.changes, before: scope.start, locations: syncedLocationIds });
             }
         } else {
             // 브랜치 정보가 없으면 모든 브랜치의 과거 데이터 삭제
@@ -213,9 +216,9 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                 DELETE FROM ROSTER
                  WHERE startTime < ?
             `).run(scopeStartISO);
-            
+
             if (deletePastResult.changes > 0) {
-                console.log(`[SYNC] Deleted ${deletePastResult.changes} past roster entries before ${scope.start} (all locations)`);
+                logger.info(`Deleted past roster entries (all locations)`, { count: deletePastResult.changes, before: scope.start });
             }
         }
         */
@@ -224,19 +227,19 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
         const oneMonthAgo = new Date();
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
         const oneMonthAgoISO = oneMonthAgo.toISOString().split('.')[0] + 'Z';
-        
+
         const cleanupResult = await txExecute(
             `
             DELETE FROM ROSTER WHERE startTime < ?
         `,
             [oneMonthAgoISO]
         );
-        
+
         const cleanupCount = cleanupResult.rowsAffected ?? 0;
         if (cleanupCount > 0) {
-            console.log(`[SYNC] Cleaned up ${cleanupCount} old roster entries older than ${oneMonthAgoISO}`);
+            logger.info(`Cleaned up old roster entries`, { count: cleanupCount, olderThan: oneMonthAgoISO });
         }
-        
+
         // 1) UPSERT: 신규 → INSERT, 기존 → UPDATE
         const upsertSql = `
       INSERT INTO ROSTER (
@@ -266,7 +269,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
         endTime = excluded.endTime,
         isPaidBreak = excluded.isPaidBreak
     `;
-        
+
         const rosterData = [];
         const breakData = [];
         const incomingIds: number[] = [];
@@ -275,27 +278,27 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
             try {
                 // 필수 필드 검증 (NOT NULL 필드들)
                 if (!v.id) {
-                    console.warn("Skipping roster entry with missing id:", v);
+                    logger.warn("Skipping roster entry with missing id");
                     continue;
                 }
-                
+
                 if (v.locationId == null) {
-                    console.warn(`Skipping roster entry ${v.id}: locationId is required but missing`);
+                    logger.warn(`Skipping roster entry: missing locationId`, { id: v.id });
                     continue;
                 }
-                
+
                 if (!v.locationName) {
-                    console.warn(`Skipping roster entry ${v.id}: locationName is required but missing`);
+                    logger.warn(`Skipping roster entry: missing locationName`, { id: v.id });
                     continue;
                 }
-                
+
                 if (!v.startTime) {
-                    console.warn(`Skipping roster entry ${v.id}: startTime is required but missing`);
+                    logger.warn(`Skipping roster entry: missing startTime`, { id: v.id });
                     continue;
                 }
-                
+
                 if (!v.endTime) {
-                    console.warn(`Skipping roster entry ${v.id}: endTime is required but missing`);
+                    logger.warn(`Skipping roster entry: missing endTime`, { id: v.id });
                     continue;
                 }
 
@@ -314,7 +317,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                 ]);
 
                 incomingIds.push(v.id);
-                
+
                 // Breaks 처리 (UPSERT)
                 if (v.breaks?.length) {
                     for (const br of v.breaks) {
@@ -324,7 +327,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                     }
                 }
             } catch (error) {
-                console.error("Error during upsert for item:", v, "Error:", error);
+                logger.error("Error during upsert for roster item", { id: v.id, error: String(error) });
                 throw error;
             }
         }
@@ -335,7 +338,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
             for (const data of rosterData) {
                 await txExecute(upsertSql, data);
             }
-            
+
             // 브레이크 데이터 배치 실행
             for (const data of breakData) {
                 await txExecute(upsertBreakSql, data);
@@ -344,15 +347,15 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
 
         // 2) DELETE: 받은 데이터에 없는 id는 삭제 (날짜 범위 + 브랜치 범위 내에서만)
         const validIncomingIds = incomingIds.filter(id => id != null);
-        
+
         if (syncedLocationIds.length > 0) {
             // 동기화한 브랜치가 있는 경우에만 삭제 수행
             const locationPlaceholders = syncedLocationIds.map(() => '?').join(',');
-            
+
             if (validIncomingIds.length > 0) {
                 // 받은 데이터가 있는 경우: 받은 데이터에 없는 것만 삭제
                 const idPlaceholders = validIncomingIds.map(() => '?').join(',');
-                
+
                 // 디버깅: 삭제 대상 조회
                 const candidatesToDelete = await txAll<{id: number, startTime: string, locationId: number, firstName: string | null, lastName: string | null}>(
                     `
@@ -365,11 +368,19 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                 `,
                     [scopeStartISO, scopeEndISO, ...syncedLocationIds, ...validIncomingIds]
                 );
-                
+
                 if (candidatesToDelete.length > 0) {
-                    console.log(`[SYNC] Found ${candidatesToDelete.length} roster entries to delete:`, candidatesToDelete.map(r => `id=${r.id}, startTime=${r.startTime}, locationId=${r.locationId}, name=${r.firstName} ${r.lastName}`));
+                    logger.info(`Found roster entries to delete`, {
+                        count: candidatesToDelete.length,
+                        entries: candidatesToDelete.map(r => ({
+                            id: r.id,
+                            startTime: r.startTime,
+                            locationId: r.locationId,
+                            name: `${maskName(r.firstName ?? '')} ${maskName(r.lastName ?? '')}`
+                        }))
+                    });
                 }
-                
+
                 const deleteResult = await txExecute(
                     `
                     DELETE FROM ROSTER
@@ -380,12 +391,12 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                 `,
                     [scopeStartISO, scopeEndISO, ...syncedLocationIds, ...validIncomingIds]
                 );
-                
+
                 const deleteCount = deleteResult.rowsAffected ?? 0;
                 if (deleteCount > 0) {
-                    console.log(`[SYNC] Deleted ${deleteCount} roster entries not in incoming data (range: ${scope.start} to ${scope.end}, locations: ${syncedLocationIds.join(', ')})`);
+                    logger.info(`Deleted roster entries not in incoming data`, { count: deleteCount, range: `${scope.start} to ${scope.end}`, locationIds: syncedLocationIds });
                 } else if (candidatesToDelete.length > 0) {
-                    console.warn(`[SYNC] WARNING: Found ${candidatesToDelete.length} candidates to delete but deleteCount is ${deleteCount}`);
+                    logger.warn(`Candidates found but deleteCount is 0`, { candidates: candidatesToDelete.length });
                 }
             } else {
                 // 받은 데이터가 없는 경우: 동기화한 브랜치의 날짜 범위 내 모든 데이터 삭제
@@ -399,20 +410,20 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                 `,
                     [scopeStartISO, scopeEndISO, ...syncedLocationIds]
                 );
-                
+
                 const deleteCount = deleteResult.rowsAffected ?? 0;
                 if (deleteCount > 0) {
-                    console.log(`[SYNC] Deleted ${deleteCount} roster entries (all entries in range ${scope.start} to ${scope.end} for locations: ${syncedLocationIds.join(', ')}) - no incoming data received`);
+                    logger.info(`Deleted all entries in range (no incoming data)`, { count: deleteCount, range: `${scope.start} to ${scope.end}`, locationIds: syncedLocationIds });
                 }
             }
         } else {
             // 동기화한 브랜치 정보가 없는 경우: 삭제하지 않음 (다른 브랜치 데이터 보호)
-            console.log(`[SYNC] No location information available, skipping delete to protect other branch data`);
+            logger.debug(`No location info — skipping delete to protect other branch data`);
         }
 
         await tx.commit();
     } catch (e) {
-        console.error("Error during roster sync, rolling back transaction:", e);
+        logger.error("Error during roster sync, rolling back", { error: String(e) });
         await tx.rollback();
         throw e;
     } finally {
@@ -426,7 +437,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
  * 오늘 이전의 모든 데이터를 모든 브랜치에서 삭제
  * 오늘 데이터는 보존
  * 매일 5시에 실행되는 store-by-store-sync 스크립트에서 사용
- * 
+ *
  * 클린업 시 생성된 CHANGE_LOG는 삭제하여 옵토메이트로 전송되지 않도록 함
  */
 export async function deletePastDataForAllBranches(): Promise<number> {
@@ -470,19 +481,19 @@ export async function deletePastDataForAllBranches(): Promise<number> {
             });
             const cleanupLogDeleteCount = cleanupLogDeleteResult.rowsAffected ?? 0;
             if (cleanupLogDeleteCount > 0) {
-                console.log(`[CLEANUP] Deleted ${cleanupLogDeleteCount} CHANGE_LOG entries created during cleanup (to prevent Optomate transmission)`);
+                logger.info(`Deleted CHANGE_LOG entries from cleanup (preventing Optomate transmission)`, { count: cleanupLogDeleteCount });
             }
         }
 
         await tx.commit();
 
         if (deleteCount > 0) {
-            console.log(`[CLEANUP] Deleted ${deleteCount} roster entries before today (${todayStr}) for all branches`);
+            logger.info(`Deleted past roster entries for all branches`, { count: deleteCount, before: todayStr });
         } else {
-            console.log(`[CLEANUP] No past roster entries found before today (${todayStr})`);
+            logger.info(`No past roster entries found`, { before: todayStr });
         }
     } catch (error) {
-        console.error(`[CLEANUP] Error deleting past data, rolling back:`, error);
+        logger.error(`Error deleting past data, rolling back`, { error: String(error) });
         await tx.rollback();
         throw error;
     } finally {
@@ -490,7 +501,7 @@ export async function deletePastDataForAllBranches(): Promise<number> {
         try {
             await enableRosterChangeTriggers(db);
         } catch (triggerError) {
-            console.error(`[CLEANUP] CRITICAL: Failed to re-enable roster triggers:`, triggerError);
+            logger.error(`CRITICAL: Failed to re-enable roster triggers`, { error: String(triggerError) });
             throw triggerError;
         }
     }
