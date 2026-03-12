@@ -2,7 +2,7 @@ import {createSecret} from "@/utils/crypto";
 import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
 import {apiFetch} from "@/services/apiFetch";
 
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
+const API_TOKEN = process.env.API_TOKENS
 
 const CheckError = (text:string) => {
     const re = /\b(IDENTIFIER|USERNAME)\b/i; // 1번 패턴

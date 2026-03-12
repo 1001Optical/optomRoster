@@ -1,6 +1,6 @@
 import {apiFetch} from "@/services/apiFetch";
 
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
+const API_TOKEN = process.env.API_TOKENS
 
 interface IResult { id: number, workHistory: string[] }
 interface ICacheEntry extends IResult { cachedAt: number }
