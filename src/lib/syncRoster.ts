@@ -431,80 +431,69 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
  */
 export async function deletePastDataForAllBranches(): Promise<number> {
     const db = await getDB();
-    
-    try {
-        await disableRosterChangeTriggers(db);
 
-        // 오늘 날짜 계산 (UTC 기준)
-        const now = new Date();
-        const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-        const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
-        
-        // 오늘 날짜의 시작 시간 (00:00:00Z) - 이전의 모든 데이터 삭제
-        const todayStart = `${todayStr}T00:00:00Z`;
-        
-        // 클린업 시작 시간 기록 (트리거로 생성된 CHANGE_LOG를 식별하기 위해)
-        const cleanupStartTime = new Date().toISOString();
-        
-        // 삭제할 rosterId 목록 미리 조회 (나중에 CHANGE_LOG 삭제에 사용)
-        const rosterIdsToDelete = await dbAll<{id: number}>(
-            db,
-            `
-            SELECT id FROM ROSTER
-            WHERE startTime < ?
-        `,
-            [todayStart]
-        );
-        
-        const rosterIdList = rosterIdsToDelete.map(r => r.id);
-        
-        // 오늘 이전의 모든 데이터 삭제 (모든 브랜치)
-        const deleteResult = await dbExecute(
-            db,
-            `
-            DELETE FROM ROSTER
-            WHERE startTime < ?
-        `,
-            [todayStart]
-        );
-        
-        // 클린업으로 인해 생성된 CHANGE_LOG 삭제 (옵토메이트로 전송되지 않도록)
-        // 삭제 직후 생성된 roster_deleted 타입의 CHANGE_LOG를 삭제
+    // 오늘 날짜 계산 (UTC 기준)
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const todayStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
+    const todayStart = `${todayStr}T00:00:00Z`;
+
+    // DDL(DROP/CREATE TRIGGER)은 트랜잭션 밖에서만 실행 가능
+    await disableRosterChangeTriggers(db);
+
+    const tx = await db.transaction("write");
+    let deleteCount = 0;
+
+    try {
+        // SELECT + DELETE ROSTER + DELETE CHANGE_LOG 를 원자적으로 실행
+        const selectResult = await tx.execute({
+            sql: `SELECT id FROM ROSTER WHERE startTime < ?`,
+            args: [todayStart],
+        });
+        const rosterIdList = (selectResult.rows as { id: number }[]).map(r => r.id);
+
+        const deleteResult = await tx.execute({
+            sql: `DELETE FROM ROSTER WHERE startTime < ?`,
+            args: [todayStart],
+        });
+        deleteCount = deleteResult.rowsAffected ?? 0;
+
         if (rosterIdList.length > 0) {
             const placeholders = rosterIdList.map(() => '?').join(',');
-            const cleanupLogDeleteResult = await dbExecute(
-                db,
-                `
-                DELETE FROM CHANGE_LOG
-                WHERE rosterId IN (${placeholders})
-                  AND changeType = 'roster_deleted'
-                  AND whenDetected >= ?
-            `,
-                [...rosterIdList, cleanupStartTime]
-            );
-            
+            const cleanupLogDeleteResult = await tx.execute({
+                sql: `
+                    DELETE FROM CHANGE_LOG
+                    WHERE rosterId IN (${placeholders})
+                      AND changeType = 'roster_deleted'
+                `,
+                args: rosterIdList,
+            });
             const cleanupLogDeleteCount = cleanupLogDeleteResult.rowsAffected ?? 0;
             if (cleanupLogDeleteCount > 0) {
                 console.log(`[CLEANUP] Deleted ${cleanupLogDeleteCount} CHANGE_LOG entries created during cleanup (to prevent Optomate transmission)`);
             }
         }
-        
-        const deleteCount = deleteResult.rowsAffected ?? 0;
+
+        await tx.commit();
+
         if (deleteCount > 0) {
             console.log(`[CLEANUP] Deleted ${deleteCount} roster entries before today (${todayStr}) for all branches`);
         } else {
             console.log(`[CLEANUP] No past roster entries found before today (${todayStr})`);
         }
-        
-        return deleteCount;
     } catch (error) {
-        console.error(`[CLEANUP] Error deleting past data:`, error);
+        console.error(`[CLEANUP] Error deleting past data, rolling back:`, error);
+        await tx.rollback();
         throw error;
     } finally {
+        if (!tx.closed) tx.close();
         try {
             await enableRosterChangeTriggers(db);
         } catch (triggerError) {
-            console.error(`[CLEANUP] Failed to re-enable roster triggers:`, triggerError);
+            console.error(`[CLEANUP] CRITICAL: Failed to re-enable roster triggers:`, triggerError);
+            throw triggerError;
         }
     }
+
+    return deleteCount;
 }
