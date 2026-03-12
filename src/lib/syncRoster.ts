@@ -450,7 +450,7 @@ export async function deletePastDataForAllBranches(): Promise<number> {
             sql: `SELECT id FROM ROSTER WHERE startTime < ?`,
             args: [todayStart],
         });
-        const rosterIdList = (selectResult.rows as { id: number }[]).map(r => r.id);
+        const rosterIdList = (selectResult.rows as unknown as { id: number }[]).map(r => r.id);
 
         const deleteResult = await tx.execute({
             sql: `DELETE FROM ROSTER WHERE startTime < ?`,
