@@ -1,5 +1,3 @@
-import {createSecret} from "@/utils/crypto";
-import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
 import {apiFetch} from "@/services/apiFetch";
 import { createLogger, maskEmail, maskName } from "@/lib/logger";
 
@@ -41,10 +39,6 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             throw new Error(`Invalid email format: ${email}`);
         }
 
-        logger.debug("Checking existing identifier count...");
-        const identifier = await checkIdentifierCount(givenName, surname);
-        logger.debug(`Current identifier count: ${identifier}`);
-
         const username = `${(givenName[0]+surname[0]+surname[1]).toUpperCase()}`;
         logger.debug(`Base username: ${username}`);
 
@@ -57,14 +51,14 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
         }
 
-        let i = (identifier ?? 0) + 1;
-        let u = 25;
+        let i = 1;
+        let u = 1;
         let attemptCount = 0;
-        const maxAttempts = 20; // 무한 루프 방지
+        const maxAttempts = 50; // 무한 루프 방지
 
         logger.debug(`Starting account creation attempts`, { maxAttempts });
 
-        while((i <= (identifier ?? 0) + 10 || u <= 35) && attemptCount < maxAttempts) {
+        while(attemptCount < maxAttempts) {
             attemptCount++;
             logger.debug(`Attempt ${attemptCount}`, { identifier: givenName[0]+surname[0]+i, username: `${username}${u}` });
 
