@@ -1,4 +1,3 @@
-import {apiFetch} from "@/services/apiFetch";
 import { createLogger, maskEmail, maskName } from "@/lib/logger";
 
 const logger = createLogger('CreateOptomAccount');
@@ -77,7 +76,7 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             };
 
             try {
-                const result = await apiFetch(`${apiUrl}/api/optometrists/createUser`, {
+                const response = await fetch(`${apiUrl}/api/optometrists/createUser`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -86,9 +85,10 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
                     body: JSON.stringify(body)
                 });
 
-                logger.debug(`API response`, { success: result.success, error: result.error });
+                const result = await response.json();
+                logger.debug(`API response`, { status: response.status, success: result.success, error: result.error });
 
-                if(result.success) {
+                if(response.ok && result.success) {
                     convertedData = {
                         id: result.data.id,
                         username: `${username}${u}`
@@ -97,7 +97,7 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
                     break;
                 } else if(result.error) {
                     const error = CheckError(result?.details?.error?.message);
-                    logger.debug(`Account creation failed`, { errorType: error });
+                    logger.debug(`Account creation failed`, { errorType: error, message: result?.details?.error?.message });
 
                     if(error === "IDENTIFIER") {
                         i++;
@@ -106,15 +106,15 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
                         u++;
                         logger.debug(`Incrementing USERNAME to ${u}`);
                     } else {
-                        logger.error(`Unknown error type`, { error });
-                        break; // 기본적으로 멈춤
+                        logger.error(`Unknown error from API`, { message: result?.details?.error?.message });
+                        break;
                     }
                 } else {
-                    logger.error("Unexpected API response format");
+                    logger.error(`Unexpected API response`, { status: response.status });
                     break;
                 }
             } catch (fetchError) {
-                logger.error(`Fetch error on attempt ${attemptCount}`, { error: String(fetchError) });
+                logger.error(`Network error on attempt ${attemptCount}`, { error: String(fetchError) });
                 break;
             }
         }
