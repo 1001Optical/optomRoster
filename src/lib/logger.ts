@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -39,6 +41,12 @@ export function createLogger(module: string) {
     },
     error: (msg: string, ctx?: Record<string, unknown>) => {
       console.error(`[ERROR] [${module}] ${msg}`, ctx ?? '');
+
+      // Sentry로 에러 전송 (프로덕션에서만 활성화됨)
+      Sentry.captureMessage(`[${module}] ${msg}`, {
+        level: 'error',
+        extra: ctx,
+      });
     },
   };
 }
