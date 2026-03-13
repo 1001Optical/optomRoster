@@ -79,7 +79,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
     const search = async (path: string, body: Record<string, unknown>) => {
         try {
-            const result = await apiFetch(`${apiUrl}${path}`, {
+            const response = await fetch(`${apiUrl}${path}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -87,9 +87,10 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
                 },
                 body: JSON.stringify(body ?? {})
             });
-            return result;
+            if (!response.ok) return null;
+            return response.json();
         } catch (e) {
-            return null
+            return null;
         }
     };
 
