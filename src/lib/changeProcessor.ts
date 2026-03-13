@@ -3,6 +3,7 @@ import {ChangeLog, optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
 import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
 import type { PostEmailData } from "@/lib/postEmail";
+import { queueEmail } from "@/lib/postEmail";
 import {OptomMap} from "@/data/stores";
 import {createOptomAccount} from "@/lib/createOptomAccount";
 import {chunk} from "@/lib/utils";
@@ -650,15 +651,22 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         }
     }
 
-    // 이메일 알림 비활성화: work history만 업데이트
     if (locumResults.length > 0) {
-        const workHistoryPromises = locumResults.map(async (result) => {
+        const promises = locumResults.map(async (result) => {
+            const tasks: Promise<unknown>[] = [];
+
             if (result.optomId && result.workHistory) {
-                await addWorkHistory(result.optomId, result.workHistory);
+                tasks.push(addWorkHistory(result.optomId, result.workHistory));
             }
+
+            if (result.emailData) {
+                tasks.push(queueEmail(result.emailData, result.isFirst ?? false));
+            }
+
+            await Promise.allSettled(tasks);
         });
 
-        await Promise.allSettled(workHistoryPromises);
+        await Promise.allSettled(promises);
     }
 
     return { summaries, mismatches, conflicts };

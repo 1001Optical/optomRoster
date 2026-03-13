@@ -1,4 +1,5 @@
 import { createLogger, maskEmail } from "@/lib/logger";
+import { getDB, dbExecute } from "@/utils/db/db";
 
 const logger = createLogger('PostEmail');
 
@@ -13,6 +14,26 @@ export interface PostEmailData {
     "optomateId"?: string
     "optomatePw"?: string
 }
+
+/**
+ * EMAIL_QUEUE 테이블에 이메일 발송 요청을 큐잉합니다.
+ * 실제 발송은 /api/cron/email-retry 크론에서 처리됩니다.
+ */
+export const queueEmail = async (data: PostEmailData, isFirst: boolean): Promise<void> => {
+    const db = await getDB();
+    await dbExecute(
+        db,
+        `INSERT INTO EMAIL_QUEUE (webhookType, payload, status, retryCount, nextRetryAt)
+         VALUES (?, ?, 'pending', 0, datetime('now'))`,
+        [isFirst ? 'first' : 'existing', JSON.stringify(data)]
+    );
+    logger.info(`Email queued`, {
+        email: maskEmail(data.email),
+        store: data.storeName,
+        date: data.rosterDate,
+        type: isFirst ? 'first' : 'existing',
+    });
+};
 
 export const postEmail = async (data: PostEmailData | undefined, isFirst: boolean) => {
     if(!data) return;
