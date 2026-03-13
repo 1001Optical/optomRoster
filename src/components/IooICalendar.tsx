@@ -98,7 +98,7 @@ export default function IooICalendar({ selectedWeek, onWeekSelect, className = '
   return (
     <div className={'relative'} ref={calendarRef}>
       <div
-        className={"w-[280px] border-gray-300 border rounded-xl px-3 py-1 flex flex-row justify-between items-center hover:cursor-pointer"}
+        className={"w-[280px] border-gray-300 dark:border-gray-600 border rounded-xl px-3 py-1 flex flex-row justify-between items-center hover:cursor-pointer"}
         onClick={() => setIsOpen(!isOpen)}
       >
         <p className={'text-center'}>
@@ -111,7 +111,7 @@ export default function IooICalendar({ selectedWeek, onWeekSelect, className = '
       </div>
       {
         isOpen ? <div className={'absolute top-10 z-20'}>
-          <div className={`p-6 bg-white rounded-lg shadow-lg border border-gray-300 ${className}`}>
+          <div className={`p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-300 dark:border-gray-600 ${className}`}>
             <div className="w-full">
               <div className="w-full [&_table]:w-full [&_table]:table-fixed [&_thead_tr]:flex [&_tbody_tr]:flex [&_th]:flex-1 [&_td]:flex-1 [&_th]:w-[14.28%] [&_td]:w-[14.28%] [&_th]:min-w-0 [&_td]:min-w-0 [&_th]:p-0 [&_td]:p-0 [&_th]:border-0 [&_td]:border-0">
                 <DayPicker
@@ -147,8 +147,8 @@ export default function IooICalendar({ selectedWeek, onWeekSelect, className = '
                       day: 'w-full h-10 flex items-center justify-center text-center rounded-none first:rounded-l-full last:rounded-r-full cursor-pointer',
                       day_selected: 'bg-blue-700 text-white font-bold shadow-md',
                       week: 'flex gap-0 w-full',
-                      caption: 'font-semibold text-lg text-slate-800 mb-4',
-                      nav_button: 'rounded-md p-2 transition-all duration-200 hover:bg-slate-100 hover:scale-105',
+                      caption: 'font-semibold text-lg text-slate-800 dark:text-slate-100 mb-4',
+                      nav_button: 'rounded-md p-2 transition-all duration-200 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-105',
                       selected: 'border-none'
                     }}
                     showOutsideDays

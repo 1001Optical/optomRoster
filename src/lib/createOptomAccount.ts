@@ -1,8 +1,7 @@
-import {createSecret} from "@/utils/crypto";
-import {checkIdentifierCount} from "@/lib/checkIdentifierCount";
-import {apiFetch} from "@/services/apiFetch";
+import { createLogger, maskEmail, maskName } from "@/lib/logger";
 
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
+const logger = createLogger('CreateOptomAccount');
+const API_TOKEN = process.env.API_TOKENS
 
 const CheckError = (text:string) => {
     const re = /\b(IDENTIFIER|USERNAME)\b/i; // 1번 패턴
@@ -20,33 +19,28 @@ const removeSpecialChars = (str: string): string => {
 }
 
 export const createOptomAccount = async (id: string, firstName: string, lastName: string, email: string) => {
-    console.log(`=== Creating Optomate Account ===`);
-    console.log(`FirstName: ${firstName}, LastName: ${lastName}, Email: ${email}`);
+    logger.info(`Creating Optomate Account`, { name: `${maskName(firstName)} ${maskName(lastName)}`, email: maskEmail(email) });
 
     try {
         // 특수문자 제거
         const givenName = removeSpecialChars(firstName);
         const surname = removeSpecialChars(lastName);
 
-        console.log(`Cleaned name - Given: ${givenName}, Surname: ${surname}`);
+        logger.debug(`Cleaned name`, { given: maskName(givenName), surname: maskName(surname) });
 
         // 특수문자 제거 후 빈 문자열 체크
         if (!givenName || !surname) {
             throw new Error(`Invalid name format after removing special characters: ${firstName} ${lastName}`);
         }
-        
+
         // 이메일 검증
         if (!email || !email.includes('@')) {
             throw new Error(`Invalid email format: ${email}`);
         }
-        
-        console.log("Checking existing identifier count...");
-        const identifier = await checkIdentifierCount(givenName, surname);
-        console.log(`Current identifier count: ${identifier}`);
-        
+
         const username = `${(givenName[0]+surname[0]+surname[1]).toUpperCase()}`;
-        console.log(`Base username: ${username}`);
-        
+        logger.debug(`Base username: ${username}`);
+
         let convertedData:{id: number, username: string} = {
             id: 0, username: ""
         };
@@ -56,17 +50,17 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
         }
 
-        let i = (identifier ?? 0) + 1;
-        let u = 25;
+        let i = 1;
+        let u = 1;
         let attemptCount = 0;
-        const maxAttempts = 20; // 무한 루프 방지
-        
-        console.log(`Starting account creation attempts (max ${maxAttempts})...`);
-        
-        while((i <= (identifier ?? 0) + 10 || u <= 35) && attemptCount < maxAttempts) {
+        const maxAttempts = 50; // 무한 루프 방지
+
+        logger.debug(`Starting account creation attempts`, { maxAttempts });
+
+        while(attemptCount < maxAttempts) {
             attemptCount++;
-            console.log(`Attempt ${attemptCount}: IDENTIFIER=${givenName[0]+surname[0]+i}, USERNAME=${username}${u}`);
-            
+            logger.debug(`Attempt ${attemptCount}`, { identifier: givenName[0]+surname[0]+i, username: `${username}${u}` });
+
             const body = {
                 "IDENTIFIER": givenName[0]+surname[0]+i,
                 "GIVEN_NAME": givenName, // 특수문자 제거된 이름
@@ -81,11 +75,8 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
                 "EXTERNAL_USER_ID": id
             };
 
-            console.log("BODY: ", body)
-            console.log("Token: ", API_TOKEN)
-
             try {
-                const result = await apiFetch(`${apiUrl}/api/optometrists/createUser`, {
+                const response = await fetch(`${apiUrl}/api/optometrists/createUser`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -94,41 +85,36 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
                     body: JSON.stringify(body)
                 });
 
-                // if (!res.ok) {
-                //     console.error(`API request failed with status: ${res.status} ${res.statusText}`);
-                //     throw new Error(`API request failed: ${res.status}`);
-                // }
+                const result = await response.json();
+                logger.debug(`API response`, { status: response.status, success: result.success, error: result.error });
 
-                console.log(result)
-                console.log(`API response:`, { success: result.success, error: result.error });
-
-                if(result.success) {
+                if(response.ok && result.success) {
                     convertedData = {
                         id: result.data.id,
                         username: `${username}${u}`
                     };
-                    console.log(`Account created successfully:`, convertedData);
+                    logger.info(`Account created successfully`, { id: convertedData.id, username: convertedData.username });
                     break;
                 } else if(result.error) {
                     const error = CheckError(result?.details?.error?.message);
-                    console.log(`Account creation failed, error type: ${error}`);
-                    
+                    logger.debug(`Account creation failed`, { errorType: error, message: result?.details?.error?.message });
+
                     if(error === "IDENTIFIER") {
                         i++;
-                        console.log(`Incrementing IDENTIFIER to ${i}`);
+                        logger.debug(`Incrementing IDENTIFIER to ${i}`);
                     } else if (error === "USERNAME") {
                         u++;
-                        console.log(`Incrementing USERNAME to ${u}`);
+                        logger.debug(`Incrementing USERNAME to ${u}`);
                     } else {
-                        console.error(`Unknown error type: ${error}`);
-                        break; // 기본적으로 멈춤
+                        logger.error(`Unknown error from API`, { message: result?.details?.error?.message });
+                        break;
                     }
                 } else {
-                    console.error("Unexpected API response format:", result);
+                    logger.error(`Unexpected API response`, { status: response.status });
                     break;
                 }
             } catch (fetchError) {
-                console.error(`Fetch error on attempt ${attemptCount}:`, fetchError);
+                logger.error(`Network error on attempt ${attemptCount}`, { error: String(fetchError) });
                 break;
             }
         }
@@ -137,10 +123,10 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             throw new Error(`Failed to create account after ${attemptCount} attempts`);
         }
 
-        console.log(`=== Account Creation Completed ===`);
+        logger.info(`Account creation completed`, { id: convertedData.id });
         return convertedData;
     } catch (error) {
-        console.error("Error in createOptomAccount:", error);
+        logger.error("Error in createOptomAccount", { error: String(error) });
         throw error;
     }
 }

@@ -1,7 +1,7 @@
 import {apiFetch} from "@/services/apiFetch";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
+const API_TOKEN = process.env.API_TOKENS
 
 interface IAdjustData {
     ADJUST_DATE: string,

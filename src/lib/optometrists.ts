@@ -1,6 +1,8 @@
 import {apiFetch} from "@/services/apiFetch";
+import { createLogger, maskEmail, maskName } from "@/lib/logger";
 
-const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKENS
+const logger = createLogger('Optometrists');
+const API_TOKEN = process.env.API_TOKENS
 
 interface IResult { id: number, workHistory: string[] }
 interface ICacheEntry extends IResult { cachedAt: number }
@@ -34,12 +36,11 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
     const cacheKey = externalId
         ? `ext:${externalId}`
         : `${safeFirstName}_${safeLastName}_${email ?? ""}`;
-    console.log(`=== Searching Optomate ID ===`);
-    console.log(`Full name: ${safeFirstName} ${safeLastName}`);
+    logger.info(`Searching Optomate ID`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}` });
 
     const cached = optomCache.get(cacheKey);
     if (cached && !isExpired(cached)) {
-        console.log(`Using cached optom ID for ${safeFirstName} ${safeLastName}`);
+        logger.debug(`Cache hit for optom ID`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}` });
         return { id: cached.id, workHistory: cached.workHistory };
     } else if (cached && isExpired(cached)) {
         optomCache.delete(cacheKey);
@@ -51,7 +52,10 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             if (!apiUrl) {
                 throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
             }
-            console.log(`API_TOKEN: ${API_TOKEN}`);
+            const maskedPayload = {
+                externalUserId: payload.externalUserId,
+                email: payload.email ? maskEmail(payload.email) : undefined
+            };
             const response = await apiFetch(`${apiUrl}/api/optometrist/${optomId}`, {
                 method: "PATCH",
                 headers: {
@@ -64,18 +68,18 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
                 })
             });
             if (!response.success) {
-                console.warn(`[OPTOMETRIST UPDATE] Failed to update optomId=${optomId}`, response);
+                logger.warn(`Failed to update optometrist`, { optomId, payload: maskedPayload });
             } else {
-                console.log(`[OPTOMETRIST UPDATE] Updated optomId=${optomId}`, payload);
+                logger.debug(`Updated optometrist`, { optomId, payload: maskedPayload });
             }
         } catch (err) {
-            console.warn(`[OPTOMETRIST UPDATE] Error updating optomId=${optomId}:`, err);
+            logger.warn(`Error updating optometrist`, { optomId, error: String(err) });
         }
     };
 
     const search = async (path: string, body: Record<string, unknown>) => {
         try {
-            const result = await apiFetch(`${apiUrl}${path}`, {
+            const response = await fetch(`${apiUrl}${path}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -83,13 +87,14 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
                 },
                 body: JSON.stringify(body ?? {})
             });
-            return result;
+            if (!response.ok) return null;
+            return response.json();
         } catch (e) {
-            return null
+            return null;
         }
     };
 
-    
+
     try {
         if (!apiUrl) {
             throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
@@ -113,7 +118,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
         // 1) ExternalId 우선
         if (externalId) {
-            console.log(`Fetching optometrists by externalId: ${externalId}`);
+            logger.debug(`Searching by externalId`, { externalId });
             const result = await search("/api/optometrist/searchByExternalUserId", { externalUserId: externalId });
             if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
@@ -122,7 +127,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
         // 2) Email
         if (email) {
-            console.log(`Fetching optometrists by email: ${email}`);
+            logger.debug(`Searching by email`, { email: maskEmail(email) });
             const result = await search("/api/optometrist/searchByEmail", { email });
             if (result?.success && result.data?.optomId) {
                 return setAndReturn(result.data);
@@ -130,7 +135,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         }
 
         // 3) 이름
-        console.log(`Fetching optometrists by name: ${safeFirstName} ${safeLastName}`);
+        logger.debug(`Searching by name`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}` });
         const result = await search("/api/optometrist/search", { firstName: safeFirstName, lastName: safeLastName });
         if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
@@ -138,7 +143,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
         return undefined;
     } catch (error) {
-        console.error(`Error searching for optometrist ID for ${safeFirstName} ${safeLastName}:`, error);
+        logger.error(`Error searching optometrist ID`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, error: String(error) });
         throw error;
     }
 }
@@ -146,8 +151,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 type AddWorkHistory = (id: number, branch: string) => Promise<boolean>;
 
 export const addWorkHistory: AddWorkHistory = async (id, branch) => {
-    console.log(`=== Post Work History ===`);
-    console.log(`ID: ${id}`);
+    logger.info(`Posting work history`, { id, branch });
 
     try {
         if (!id || !branch) {
@@ -160,7 +164,7 @@ export const addWorkHistory: AddWorkHistory = async (id, branch) => {
         }
 
         const url = `${apiUrl}/api/optometrists/optomWorkHistory`;
-        console.log(`Fetching optometrists from: ${url}`);
+        logger.debug(`Calling work history endpoint`, { url });
 
         const result = await apiFetch(url, {
             method: "POST",
@@ -188,7 +192,7 @@ export const addWorkHistory: AddWorkHistory = async (id, branch) => {
 
         return result.success
     } catch (error) {
-        console.error(`ERROR AddWorkHistory:`, error);
+        logger.error(`Error in addWorkHistory`, { id, error: String(error) });
         throw error;
     }
 }
