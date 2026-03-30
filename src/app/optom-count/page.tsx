@@ -241,12 +241,12 @@ export default function OptomCountPage() {
   };
 
   return (
-    <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center bg-white dark:bg-gray-900">
+    <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center bg-white">
       <div className="w-[1240px] h-full flex flex-col gap-4">
         {/* 헤더 및 컨트롤 */}
         <div className="w-full flex flex-col gap-4">
           <div className="flex justify-between items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Appointment Rate</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Appointment Rate</h1>
           
           <div className="flex items-center gap-3">
             {/* 월 선택 */}
@@ -257,7 +257,7 @@ export default function OptomCountPage() {
                 type="month"
                 value={selectedMonth}
                 onChange={handleMonthChange}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             {/* 새로고침 버튼 */}
@@ -284,13 +284,13 @@ export default function OptomCountPage() {
           </div>
 
           {/* 탭 선택 */}
-          <div className="flex gap-2 border-b border-gray-300 dark:border-gray-600">
+          <div className="flex gap-2 border-b border-gray-300">
             <button
               onClick={() => setViewMode("weekly")}
               className={`px-4 py-2 font-medium ${
                 viewMode === "weekly"
                   ? "border-b-2 border-blue-500 text-blue-600"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  : "text-gray-600 hover:text-gray-900"
               }`}
             >
               Weekly
@@ -300,7 +300,7 @@ export default function OptomCountPage() {
               className={`px-4 py-2 font-medium ${
                 viewMode === "monthly"
                   ? "border-b-2 border-blue-500 text-blue-600"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  : "text-gray-600 hover:text-gray-900"
               }`}
             >
               Monthly
@@ -311,7 +311,7 @@ export default function OptomCountPage() {
           <div className="flex items-center gap-3">
             {viewMode === "weekly" && (
               <div className="flex items-center gap-2">
-                <label htmlFor="week-select" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label htmlFor="week-select" className="text-sm font-medium text-gray-700">
                   Week:
                 </label>
                 <input
@@ -320,7 +320,7 @@ export default function OptomCountPage() {
                   min="1"
                   value={selectedWeek}
                   onChange={handleWeekChange}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-20"
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-20"
                 />
               </div>
             )}
@@ -355,18 +355,18 @@ export default function OptomCountPage() {
 
         {/* Optom Count 표 */}
         <div className="w-full flex flex-col gap-2 flex-1 min-h-0">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h2 className="text-lg font-semibold text-gray-900">
             {getPeriodText()}
           </h2>
 
-          <div className="w-full border border-gray-300 dark:border-gray-600 rounded-md overflow-auto bg-white dark:bg-gray-900" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+          <div className="w-full border border-gray-300 rounded-md overflow-auto bg-white" style={{ maxHeight: 'calc(100vh - 300px)' }}>
             <table className="min-w-full border-collapse">
-              <thead className="bg-gray-100 dark:bg-gray-800 sticky top-0" style={{ zIndex: 20 }}>
+              <thead className="bg-gray-100 sticky top-0" style={{ zIndex: 20 }}>
                 <tr>
-                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 20 }}>
+                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900 bg-gray-100" style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 20, backgroundColor: '#f3f4f6' }}>
                     Store
                   </th>
-                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 20 }}>
+                  <th className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900 bg-gray-100" style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 20, backgroundColor: '#f3f4f6' }}>
                     Total (%)
                   </th>
                   {weeklyDates.map((date) => {
@@ -376,7 +376,7 @@ export default function OptomCountPage() {
                     return (
                       <th
                         key={date}
-                        className="font-semibold text-center py-3 px-4 border-b border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                        className="font-semibold text-center py-3 px-4 border-b border-gray-300 text-gray-900"
                       >
                         {month}/{day}
                       </th>
@@ -399,13 +399,13 @@ export default function OptomCountPage() {
 
                 return (
                   <tbody>
-                    <tr className="bg-slate-300 dark:bg-slate-600 font-bold" style={{ position: 'sticky', top: '48px', zIndex: 9 }}>
-                      <td className="py-3 px-4 border-b-2 border-gray-400 dark:border-gray-500 text-center text-gray-900 dark:text-white font-bold text-lg bg-slate-300 dark:bg-slate-600"
-                          style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 10 }}>
+                    <tr className="bg-white font-bold" style={{ position: 'sticky', top: '48px', zIndex: 9, backgroundColor: '#cbd5e0' }}>
+                      <td className="py-3 px-4 border-b-2 border-gray-400 text-center text-gray-900 font-bold text-lg" 
+                          style={{ width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 10, backgroundColor: '#cbd5e0' }}>
                         Company Total
                       </td>
-                      <td className={`py-3 px-4 border-b-2 border-gray-400 dark:border-gray-500 text-center font-bold text-lg bg-slate-300 dark:bg-slate-600`}
-                          style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 10 }}>
+                      <td className={`py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg ${getOccupancyColor(companyTotal.totalOccupancyRate)}`}
+                          style={{ width: '120px', minWidth: '120px', position: 'sticky', left: '200px', zIndex: 10, backgroundColor: '#cbd5e0' }}>
                         <div className="flex flex-col">
                           <span className="text-sm">{companyTotal.totalAppointmentCount}/{companyTotal.totalSlotCount}</span>
                           <span>{companyTotal.totalOccupancyRate.toFixed(2)}%</span>
@@ -416,16 +416,16 @@ export default function OptomCountPage() {
                         
                         if (isFutureDate) {
                           return (
-                            <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 dark:border-gray-500 text-center font-bold text-lg text-gray-500 bg-slate-300 dark:bg-slate-600">
+                            <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
                               -
                             </td>
                           );
                         }
-
+                        
                         const dateTotal = companyTotal.dateTotals[date];
                         if (!dateTotal) {
                           return (
-                            <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 dark:border-gray-500 text-center font-bold text-lg text-gray-500 bg-slate-300 dark:bg-slate-600">
+                            <td key={date} className="w-[120px] py-3 px-4 border-b-2 border-gray-400 text-center font-bold text-lg text-gray-500" style={{ backgroundColor: '#cbd5e0' }}>
                               -
                             </td>
                           );
@@ -447,7 +447,7 @@ export default function OptomCountPage() {
               <tbody>
                 {optomCountLoading ? (
                   <tr>
-                    <td colSpan={(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 ? weeklyDates.length + 2 : 5} className="py-8 text-center bg-white dark:bg-gray-900">
+                    <td colSpan={(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 ? weeklyDates.length + 2 : 5} className="py-8 text-center bg-white">
                       <div
                         role="status"
                         className="flex justify-center items-center"
@@ -516,16 +516,16 @@ export default function OptomCountPage() {
                       return (
                           <React.Fragment key={state}>
                             {/* 주 헤더 행 */}
-                            <tr className="bg-gray-200 dark:bg-gray-700" style={{position: 'sticky', top: '120px', zIndex: 8}}>
+                            <tr className="bg-gray-200" style={{position: 'sticky', top: '120px', zIndex: 8}}>
                               <td
-                                  className="py-2 px-4 font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 bg-gray-200 dark:bg-gray-700"
+                                  className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
                                   style={{width: '200px', minWidth: '200px', position: 'sticky', left: 0, zIndex: 8}}
                               >
                                 {state}
                               </td>
                               <td
                                   colSpan={weeklyDates.length + 1}
-                                  className="py-2 px-4 font-bold text-gray-900 dark:text-white border-b border-gray-300 dark:border-gray-600 bg-gray-200 dark:bg-gray-700"
+                                  className="py-2 px-4 font-bold text-gray-900 border-b border-gray-300 bg-gray-200"
                               >
                               </td>
                             </tr>
@@ -555,9 +555,9 @@ export default function OptomCountPage() {
                                 return (
                                     <tr
                                         key={item.locationId}
-                                        className={storeIndex % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}
+                                        className={storeIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
                                     >
-                                      <td className={`py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white font-semibold ${storeIndex % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}`}
+                                      <td className={`py-2 px-4 border-b border-gray-200 text-center text-gray-900 font-semibold ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                                           style={{
                                             width: '200px',
                                             minWidth: '200px',
@@ -567,7 +567,7 @@ export default function OptomCountPage() {
                                           }}>
                                         {item.storeName}
                                       </td>
-                                      <td className={`py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center font-semibold ${getOccupancyTextColor(totalOccupancyRate)} ${storeIndex % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800'}`}
+                                      <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyTextColor(totalOccupancyRate)} ${storeIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                                           style={{
                                             width: '120px',
                                             minWidth: '120px',
@@ -588,7 +588,7 @@ export default function OptomCountPage() {
                                           return (
                                               <td
                                                   key={date}
-                                                  className="w-[120px] py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center font-semibold text-gray-400 dark:text-gray-500"
+                                                  className="w-[120px] py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-400"
                                               >
                                                 -
                                               </td>
@@ -601,7 +601,7 @@ export default function OptomCountPage() {
                                           return (
                                               <td
                                                   key={date}
-                                                  className={`py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center font-semibold ${getOccupancyColor(rate)}`}
+                                                  className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(rate)}`}
                                               >
                                                 {rate.toFixed(2)}%
                                               </td>
@@ -611,7 +611,7 @@ export default function OptomCountPage() {
                                         return (
                                             <td
                                                 key={date}
-                                                className={`py-2 px-4 w-[120px] border-b border-gray-200 dark:border-gray-700 text-center font-semibold ${getOccupancyColor(dateData.occupancyRate)}`}
+                                                className={`py-2 px-4 w-[120px] border-b border-gray-200 text-center font-semibold ${getOccupancyColor(dateData.occupancyRate)}`}
                                             >
                                               <div className="flex flex-col">
                                                 <span
@@ -629,21 +629,21 @@ export default function OptomCountPage() {
                               return (
                                   <tr
                                       key={item.locationId}
-                                      className={storeIndex % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"}
+                                      className={storeIndex % 2 === 0 ? "bg-white" : "bg-gray-50"}
                                   >
-                                    <td className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white">
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center text-gray-900">
                                       {item.storeName}
                                     </td>
-                                    <td className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center text-gray-900 dark:text-white">
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center text-gray-900">
                                       {item.locationId}
                                     </td>
-                                    <td className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center font-semibold text-gray-900 dark:text-white">
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-900">
                                       {item.slotCount}
                                     </td>
-                                    <td className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center font-semibold text-gray-900 dark:text-white">
+                                    <td className="py-2 px-4 border-b border-gray-200 text-center font-semibold text-gray-900">
                                       {item.appointmentCount}
                                     </td>
-                                    <td className={`py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-center font-semibold ${getOccupancyColor(item.occupancyRate)}`}>
+                                    <td className={`py-2 px-4 border-b border-gray-200 text-center font-semibold ${getOccupancyColor(item.occupancyRate)}`}>
                                       {item.occupancyRate.toFixed(2)}%
                                     </td>
                                   </tr>
@@ -652,24 +652,26 @@ export default function OptomCountPage() {
 
                             {/* 주별 토탈 행 */}
                             {(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 && stateTotal && (
-                                <tr className="bg-blue-100 dark:bg-blue-900 font-bold border-t border-blue-300 dark:border-blue-700">
-                                  <td className="py-2 px-4 border-b border-gray-300 dark:border-gray-600 text-center text-gray-900 dark:text-white font-bold bg-blue-100 dark:bg-blue-900"
+                                <tr className="bg-white font-bold border-t border-blue-300">
+                                  <td className="py-2 px-4 border-b border-gray-300 text-center text-gray-900 font-bold"
                                       style={{
                                         width: '200px',
                                         minWidth: '200px',
                                         position: 'sticky',
                                         left: 0,
                                         zIndex: 5,
+                                        backgroundColor: '#dbeafe'
                                       }}>
                                     {state} Total
                                   </td>
-                                  <td className={`py-2 px-4 border-b border-gray-300 dark:border-gray-600 text-center font-bold bg-blue-100 dark:bg-blue-900`}
+                                  <td className={`py-2 px-4 border-b border-gray-300 text-center font-bold ${getOccupancyColor(stateTotal.totalOccupancyRate)}`}
                                       style={{
                                         width: '120px',
                                         minWidth: '120px',
                                         position: 'sticky',
                                         left: '200px',
                                         zIndex: 5,
+                                        backgroundColor: '#dbeafe'
                                       }}>
                                     <div className="flex flex-col">
                                       <span
@@ -683,7 +685,8 @@ export default function OptomCountPage() {
                                     if (isFutureDate) {
                                       return (
                                           <td key={date}
-                                              className="w-[120px] py-2 px-4 border-b border-gray-300 dark:border-gray-600 text-center font-bold text-gray-400 bg-blue-100 dark:bg-blue-900">
+                                              className="w-[120px] py-2 px-4 border-b border-gray-300 text-center font-bold text-gray-400"
+                                              style={{backgroundColor: '#dbeafe'}}>
                                             -
                                           </td>
                                       );
@@ -693,7 +696,8 @@ export default function OptomCountPage() {
                                     if (!dateTotal) {
                                       return (
                                           <td key={date}
-                                              className="w-[120px] py-2 px-4 border-b border-gray-300 dark:border-gray-600 text-center font-bold bg-blue-100 dark:bg-blue-900">
+                                              className="w-[120px] py-2 px-4 border-b border-gray-300 text-center font-bold"
+                                              style={{backgroundColor: '#dbeafe'}}>
                                             -
                                           </td>
                                       );
@@ -701,7 +705,7 @@ export default function OptomCountPage() {
 
                                     return (
                                         <td key={date}
-                                            className={`py-2 px-4 w-[120px] border-b border-gray-300 dark:border-gray-600 text-center font-bold ${getOccupancyColor(dateTotal.occupancyRate)}`}>
+                                            className={`py-2 px-4 w-[120px] border-b border-gray-300 text-center font-bold ${getOccupancyColor(dateTotal.occupancyRate)}`}>
                                           <div className="flex flex-col">
                                             <span
                                                 className="text-sm">{dateTotal.appointmentCount}/{dateTotal.slotCount}</span>
@@ -718,7 +722,7 @@ export default function OptomCountPage() {
                   })()
                 ) : (
                   <tr>
-                    <td colSpan={(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 ? weeklyDates.length + 2 : 5} className="py-8 text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900">
+                    <td colSpan={(viewMode === "weekly" || viewMode === "monthly") && weeklyDates.length > 0 ? weeklyDates.length + 2 : 5} className="py-8 text-center text-gray-500 bg-white">
                       데이터가 없습니다
                     </td>
                   </tr>

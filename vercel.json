@@ -6,9 +6,6 @@
     "path": "/api/roster/cleanup-past-data",
     "schedule": "55 17 * * *"
   }, {
-    "path": "/api/cron/email-retry",
-    "schedule": "*/10 * * * *"
-  }, {
     "path": "/api/cron/store-sync?store=BKT",
     "schedule": "0 18 * * *"
   }, {

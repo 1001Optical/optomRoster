@@ -161,6 +161,49 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
     }, [appointmentConflicts, deletedAlerts]);
 
     const hasAlerts = visibleSlotMismatches.length > 0 || visibleAppointmentConflicts.length > 0;
+    
+    // 디버깅: 필터링 결과 확인
+    useEffect(() => {
+        console.log("[AlertToast] Filtering results:", {
+            totalSlotMismatches: slotMismatches.length,
+            visibleSlotMismatches: visibleSlotMismatches.length,
+            totalAppointmentConflicts: appointmentConflicts.length,
+            visibleAppointmentConflicts: visibleAppointmentConflicts.length,
+            deletedAlertsCount: deletedAlerts.size,
+            slotMismatchesData: slotMismatches,
+            appointmentConflictsData: appointmentConflicts
+        });
+        
+        if (slotMismatches.length > 0 && visibleSlotMismatches.length === 0) {
+            console.warn("[AlertToast] WARNING: All slot mismatches are filtered out!");
+        }
+        if (appointmentConflicts.length > 0 && visibleAppointmentConflicts.length === 0) {
+            console.warn("[AlertToast] WARNING: All appointment conflicts are filtered out!");
+        }
+    }, [slotMismatches, appointmentConflicts, deletedAlerts]);
+    
+    // Log props changes for debugging
+    useEffect(() => {
+        console.log("[AlertToast] Props updated:", {
+            slotMismatches: slotMismatches.length,
+            appointmentConflicts: appointmentConflicts.length,
+            slotMismatchesData: slotMismatches,
+            appointmentConflictsData: appointmentConflicts
+        });
+    }, [slotMismatches, appointmentConflicts]);
+    
+    // Debug log
+    useEffect(() => {
+        console.log("[AlertToast] Render state:", {
+            hasAlerts,
+            isVisible,
+            visibleSlotMismatches: visibleSlotMismatches.length,
+            visibleAppointmentConflicts: visibleAppointmentConflicts.length,
+            totalSlotMismatches: slotMismatches.length,
+            totalAppointmentConflicts: appointmentConflicts.length,
+            deletedAlertsCount: deletedAlerts.size
+        });
+    }, [slotMismatches, appointmentConflicts, deletedAlerts, isVisible]);
 
     // Auto-expand first alert when new alerts arrive
     useEffect(() => {
@@ -177,6 +220,7 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
             if (firstAlertId) {
                 setExpanded(prev => {
                     if (!prev.has(firstAlertId)) {
+                        console.log("[AlertToast] Auto-expanding first alert:", firstAlertId);
                         return new Set([firstAlertId]);
                     }
                     return prev;
@@ -195,6 +239,7 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
             newDeleted.add(alertId);
             return newDeleted;
         });
+        console.log("[AlertToast] Removed alert from localStorage and marked as deleted:", alertId);
     };
 
     const toggleExpand = (alertId: string) => {
@@ -207,9 +252,23 @@ export default function AlertToast({ slotMismatches, appointmentConflicts }: Ale
         setExpanded(newExpanded);
     };
 
+    // 디버깅: 렌더링 조건 확인
+    console.log("[AlertToast] Render check:", {
+        hasAlerts,
+        isVisible,
+        willRender: hasAlerts && isVisible,
+        slotMismatchesLength: slotMismatches.length,
+        appointmentConflictsLength: appointmentConflicts.length,
+        visibleSlotMismatchesLength: visibleSlotMismatches.length,
+        visibleAppointmentConflictsLength: visibleAppointmentConflicts.length
+    });
+
     if (!hasAlerts || !isVisible) {
+        console.log("[AlertToast] Not rendering - hasAlerts:", hasAlerts, "isVisible:", isVisible);
         return null;
     }
+    
+    console.log("[AlertToast] Rendering alerts - slotMismatches:", visibleSlotMismatches.length, "appointmentConflicts:", visibleAppointmentConflicts.length);
 
     return (
         <div className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2 max-h-[calc(100vh-2rem)] overflow-y-auto">

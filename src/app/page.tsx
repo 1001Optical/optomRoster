@@ -47,15 +47,21 @@ export default function Home() {
     const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>(getCurrentWeekRange())
 
     useEffect(() => {
+        console.log("=== Loading Roster Data ===");
+        console.log(`Selected week: ${selectedWeek?.from} to ${selectedWeek?.to}`);
+        console.log(`Selected option: ${selectOption}`);
+
         setLoading(true);
         setError(null);
 
         getList(selectedWeek?.from, selectedWeek?.to, selectOption)
             .then(res => {
                 if(res){
+                    console.log(`Roster data loaded successfully: ${Object.keys(res).length} stores`);
                     setRes(res);
                     setError(null);
                 } else {
+                    console.warn("No roster data received");
                     setRes({});
                     setError("No data available for the selected period");
                 }
@@ -81,7 +87,7 @@ export default function Home() {
     <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center">
       <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
         <div className="w-full flex justify-between items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Roster</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Roster</h1>
 
           <div className="flex justify-end gap-3">
             <IooISelect
@@ -97,8 +103,9 @@ export default function Home() {
                 className="max-w-md"
             />
             <button
-                className="size-8 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer flex justify-center items-center hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                className="size-8 border border-gray-300 rounded-md cursor-pointer flex justify-center items-center hover:bg-gray-100 disabled:opacity-50"
                 onClick={async () => {
+                    console.log("=== Manual Refresh Triggered ===");
                     setLoading(true);
                     setError(null);
                     setSlotMismatches([]);
@@ -106,6 +113,9 @@ export default function Home() {
 
                     try {
                         const refreshResult = await refresh(selectedWeek?.from, selectedWeek?.to, selectOption);
+                        console.log("Manual refresh completed successfully");
+                        console.log("[PAGE] Refresh result:", refreshResult);
+                        
                         let selectedOptCodes: string[] = [];
                         if (typeof selectOption === 'number') {
                             const code = OptomMap.find(v => v.LocationId === selectOption)?.OptCode;
@@ -119,13 +129,15 @@ export default function Home() {
                         const filteredSlotMismatches = selectedOptCodes.length > 0
                             ? slotMismatches.filter((s: SlotMismatch) => selectedOptCodes.includes(s.branch))
                             : slotMismatches;
+                        console.log(`[PAGE] Setting ${slotMismatches.length} slot mismatches:`, slotMismatches);
                         setSlotMismatches(filteredSlotMismatches);
-
+                        
                         // Appointment 충돌 정보 저장 (빈 배열이어도 저장)
                         const appointmentConflicts = refreshResult?.appointmentConflicts || [];
                         const filteredAppointmentConflicts = selectedOptCodes.length > 0
                             ? appointmentConflicts.filter((c: AppointmentConflict) => selectedOptCodes.includes(c.branch))
                             : appointmentConflicts;
+                        console.log(`[PAGE] Setting ${appointmentConflicts.length} appointment conflicts:`, appointmentConflicts);
                         setAppointmentConflicts(filteredAppointmentConflicts);
                         
                         // 데이터 다시 로드

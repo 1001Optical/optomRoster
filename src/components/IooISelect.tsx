@@ -14,7 +14,7 @@ interface IOptionProps {
 }
 
 const IooIOption = ({item, onClick}: IOptionProps) => {
-    return <div className={"py-2 px-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"} onClick={() => onClick(item.key)}>
+    return <div className={"py-2 px-3 hover:bg-gray-100 cursor-pointer"} onClick={() => onClick(item.key)}>
         <p>{item.value}</p>
     </div>
 }
@@ -43,7 +43,7 @@ const IooISelect = ({selectItem, items = [], onSelect}: ISelectProps) => {
     return <div className={"relative"} ref={selectRef}>
         {/* select 선택 창*/}
         <div
-            className={"w-[212px] flex justify-between items-center border border-gray-300 dark:border-gray-600 px-3 py-1 gap-2 rounded-xl cursor-pointer "}
+            className={"w-[212px] flex justify-between items-center border border-gray-300 px-3 py-1 gap-2 rounded-xl cursor-pointer "}
             onClick={() => setIsOpen(!isOpen)}
         >
             <p>{selectItem !== undefined ? items.find(v => v.key === selectItem)?.value : "Select Store"}</p>
@@ -51,7 +51,7 @@ const IooISelect = ({selectItem, items = [], onSelect}: ISelectProps) => {
         </div>
         {
             isOpen && (
-                <div className={"absolute w-[212px] max-h-[300px] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl top-10 overflow-scroll z-20"}>
+                <div className={"absolute w-[212px] max-h-[300px] bg-white border border-gray-300 rounded-xl top-10 overflow-scroll z-20"}>
                     {
                         items.length
                             ? <div>

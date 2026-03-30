@@ -7,9 +7,6 @@ import {OptomMap} from "@/data/stores";
 import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
 import {sendChangeToOptomateAPI, SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
-import { createLogger, maskName } from "@/lib/logger";
-
-const logger = createLogger('EHList');
 
 export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null) => {
     try {
@@ -17,7 +14,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         const secret = process.env.EMPLOYMENTHERO_SECRET;
         const server_url = process.env.EMPLOYMENTHERO_API_URL;
-
+        
         if (!secret || !server_url) {
             throw new Error("Missing required environment variables: EMPLOYMENTHERO_SECRET or EMPLOYMENTHERO_API_URL");
         }
@@ -55,6 +52,8 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         const result = await response.json();
 
+        // const returnData: optomData[] = [];
+
         // 하이브리드 캐싱: 메모리 + DB
         const employeeMap = new Map();
         const CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
@@ -70,17 +69,20 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         // 성능 최적화: 고유한 직원 ID만 먼저 추출하여 병렬 처리
         const uniqueEmployeeIds = [...new Set(result.map((shift: Shift) => shift.employeeId).filter(Boolean))];
-        logger.info(`Processing roster data`, { totalShifts: result.length, uniqueEmployees: uniqueEmployeeIds.length, range: `${fromDate} to ${toDate}` });
+        console.log(`\n📊 [EMPLOYMENT HERO] Processing roster data`);
+        console.log(`   └─ Total shifts: ${result.length}`);
+        console.log(`   └─ Unique employees: ${uniqueEmployeeIds.length}`);
+        console.log(`   └─ Date range: ${fromDate} to ${toDate}`);
 
         // 직원 정보를 배치로 병렬 처리
         const BATCH_SIZE = 5; // 동시에 5명씩 처리
         const batches = chunk(uniqueEmployeeIds, BATCH_SIZE);
 
-        logger.debug(`Processing employees in batches`, { batchCount: batches.length, batchSize: BATCH_SIZE });
+        console.log(`   └─ Processing in ${batches.length} batch(es) of ${BATCH_SIZE} employees\n`);
 
         for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
             const batch = batches[batchIndex];
-            logger.debug(`Processing employee batch`, { batch: batchIndex + 1, of: batches.length, size: batch.length });
+            console.log(`📦 [EMPLOYMENT HERO] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} employees)`);
             const batchPromises = batch.map(async (employeeId) => {
                 try {
                     // 메모리 캐시 확인
@@ -92,7 +94,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                     const dbCached = await dbGet<{ data: string; updated_at: number }>(
                         db,
                         `
-                        SELECT data, updated_at FROM employee_cache
+                        SELECT data, updated_at FROM employee_cache 
                         WHERE employee_id = ? AND updated_at > ?
                     `,
                         [Number(employeeId), Date.now() - CACHE_TTL]
@@ -130,7 +132,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
                     return { id: employeeId, info: processedInfo };
                 } catch (error) {
-                    logger.error(`Failed to get employee info`, { employeeId, error: String(error) });
+                    console.error(`Failed to get employee info for ${employeeId}:`, error);
                     return { id: employeeId, info: null };
                 }
             });
@@ -144,19 +146,21 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
             });
 
             // 배치 간 지연 (API 서버 부하 방지, Rate Limiting 방지)
+            // 429 에러를 줄이기 위해 배치 간 지연 증가
             if (batches.length > 1 && batchIndex < batches.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                console.log(`   ⏳ Waiting 500ms before next batch...\n`);
+                await new Promise(resolve => setTimeout(resolve, 500)); // 100ms -> 500ms로 증가
             }
         }
 
-        logger.info(`All employee info processed`, { count: employeeMap.size });
+        console.log(`✅ [EMPLOYMENT HERO] All employee info processed\n`);
 
         // 이제 모든 직원 정보가 준비되었으므로 변환 처리 (동일한 로직 유지)
         const convertedData: (optomData | undefined)[] | [] = Array.isArray(result) ? result.map((shift: Shift, index: number): optomData | undefined => {
             try {
                 // workTypeId가 472663인 경우 Optomate로 보내지 않도록 제외
                 if (shift.workTypeId === 472663 || shift.workTypeId === 536674) {
-                    logger.debug(`Skipping shift — excluded workTypeId`, { shiftId: shift.id, workTypeId: shift.workTypeId });
+                    console.log(`[EMPLOYMENT HERO] Skipping shift ${shift.id} - workTypeId is 472663`);
                     return undefined;
                 }
 
@@ -175,20 +179,20 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                     email = name.email;
                 } else {
                     // 캐시에 없거나 API 호출 실패 시 shift.employeeName에서 파싱 시도
-                    logger.warn(`No cached info for employee, parsing from employeeName`, { employeeId: shift.employeeId });
+                    console.warn(`  ⚠️  [EMPLOYMENT HERO] No cached info for employee ${shift.employeeId}, attempting to parse from employeeName`);
                     if (shift.employeeName) {
                         const nameParts = shift.employeeName.trim().split(/\s+/);
                         if (nameParts.length >= 2) {
                             firstName = nameParts[0];
                             lastName = nameParts.slice(1).join(' ');
                             email = ""; // 이메일은 없음
-                            logger.debug(`Parsed name from shift`, { name: `${maskName(firstName)} ${maskName(lastName)}` });
+                            console.log(`     └─ Parsed name: ${firstName} ${lastName}`);
                         } else {
-                            logger.error(`Cannot parse employee name`, { employeeId: shift.employeeId });
+                            console.error(`     └─ ❌ Cannot parse employee name: ${shift.employeeName}`);
                             return undefined;
                         }
                     } else {
-                        logger.error(`No employee name available`, { employeeId: shift.employeeId });
+                        console.error(`     └─ ❌ No employee name available`);
                         return undefined;
                     }
                 }
@@ -214,23 +218,26 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                     }))
                 };
             } catch (conversionError) {
-                logger.error(`Error converting shift`, { index, shiftId: shift.id, error: String(conversionError) });
+                console.error(`Error converting shift at index ${index}:`, conversionError, shift);
                 return undefined;
             }
         }) : [];
 
         const filterData: optomData[] = convertedData.filter((v): v is optomData => v !== undefined)
 
-        logger.info(`Data conversion summary`, { total: result.length, converted: filterData.length, failed: result.length - filterData.length });
+        console.log(`\n📊 [EMPLOYMENT HERO] Data conversion summary`);
+        console.log(`   └─ Total shifts: ${result.length}`);
+        console.log(`   └─ Converted: ${filterData.length}`);
+        console.log(`   └─ Failed: ${result.length - filterData.length}\n`);
 
         // 동기화한 브랜치의 locationId 추출 (중복 제거)
-        const syncedLocationIds = branch
+        const syncedLocationIds = branch 
             ? [OptomMap.find(v => v.OptCode === branch)?.LocationId].filter((id): id is number => id != null)
             : [...new Set(filterData.map(v => v.locationId).filter((id): id is number => id != null))];
 
         await syncRoster(db, filterData, {
-            start: fromDate,
-            end: toDate,
+            start: fromDate, 
+            end: toDate, 
             locationIds: syncedLocationIds
         });
 
@@ -242,7 +249,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
 
         return { data: filterData, slotMismatches, appointmentConflicts }; // 실제 필터링된 데이터와 타임슬롯 불일치 정보, appointment 충돌 정보 반환
     } catch (error) {
-        logger.error("Error in getEmploymentHeroList", { error: String(error) });
+        console.error("Error in getEmploymentHeroList:", error);
         throw error;
     }
 }

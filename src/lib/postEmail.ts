@@ -1,8 +1,3 @@
-import { createLogger, maskEmail } from "@/lib/logger";
-import { getDB, dbExecute } from "@/utils/db/db";
-
-const logger = createLogger('PostEmail');
-
 export interface PostEmailData {
     email: string
     "lastName": string
@@ -15,31 +10,14 @@ export interface PostEmailData {
     "optomatePw"?: string
 }
 
-/**
- * EMAIL_QUEUE 테이블에 이메일 발송 요청을 큐잉합니다.
- * 실제 발송은 /api/cron/email-retry 크론에서 처리됩니다.
- */
-export const queueEmail = async (data: PostEmailData, isFirst: boolean): Promise<void> => {
-    const db = await getDB();
-    await dbExecute(
-        db,
-        `INSERT INTO EMAIL_QUEUE (webhookType, payload, status, retryCount, nextRetryAt)
-         VALUES (?, ?, 'pending', 0, datetime('now'))`,
-        [isFirst ? 'first' : 'existing', JSON.stringify(data)]
-    );
-    logger.info(`Email queued`, {
-        email: maskEmail(data.email),
-        store: data.storeName,
-        date: data.rosterDate,
-        type: isFirst ? 'first' : 'existing',
-    });
-};
-
 export const postEmail = async (data: PostEmailData | undefined, isFirst: boolean) => {
     if(!data) return;
-
-    logger.info(`Sending email`, { type: isFirst ? 'first-time' : 'existing', email: maskEmail(data.email), store: data.storeName, date: data.rosterDate });
-
+    
+    console.log(`  📧 [EMAIL] Sending ${isFirst ? 'first-time' : 'existing'} user email`);
+    console.log(`     └─ To: ${data.email}`);
+    console.log(`     └─ Store: ${data.storeName}`);
+    console.log(`     └─ Date: ${data.rosterDate}`);
+    
     try {
         // 데이터 검증
         if (!data.email || !data.email.includes('@')) {
@@ -51,42 +29,46 @@ export const postEmail = async (data: PostEmailData | undefined, isFirst: boolea
         }
 
         const webhookUrl = isFirst ? process.env.MAKE_WEBHOOK_FIRST : process.env.MAKE_WEBHOOK_EXIST;
-
+        
         if (!webhookUrl) {
             throw new Error(`Missing webhook URL for ${isFirst ? 'first' : 'existing'} user`);
         }
 
+        console.log(`     └─ Webhook URL: ${webhookUrl}`);
+        console.log(`     └─ Request Body:`, JSON.stringify(data, null, 2));
+
         const response = await fetch(webhookUrl, {
             method: "POST",
-            headers: {
-                "content-type": "application/json"
+            headers: { 
+                "content-type": "application/json" 
             },
             body: JSON.stringify(data),
         });
 
-        logger.debug(`Webhook response`, { status: response.status, statusText: response.statusText });
+        console.log(`     └─ Response Status: ${response.status} ${response.statusText}`);
 
         if (!response.ok) {
             const errorText = await response.text();
-            logger.error(`Webhook request failed`, { status: response.status, statusText: response.statusText });
+            console.error(`     └─ Error Response:`, errorText);
             throw new Error(`Email webhook request failed: ${response.status} ${response.statusText}`);
         }
 
         const responseText = await response.text();
         if (responseText) {
             try {
-                JSON.parse(responseText); // validate JSON
-                logger.debug(`Webhook response received`);
+                const responseJson = JSON.parse(responseText);
+                console.log(`     └─ Response Body:`, JSON.stringify(responseJson, null, 2));
             } catch {
-                logger.debug(`Webhook response received (non-JSON)`);
+                console.log(`     └─ Response Body:`, responseText);
             }
         }
 
-        logger.info(`Email sent successfully`, { email: maskEmail(data.email), store: data.storeName, date: data.rosterDate, isFirst, status: response.status });
-
+        // ✅ Locum email 결과 요약 로그 (필요한 최소 정보만)
+        console.log(`[LOCUM EMAIL] ok email=${data.email} store=${data.storeName} date=${data.rosterDate} isFirst=${isFirst} status=${response.status}`);
+        
         return response;
     } catch (error) {
-        logger.error(`Email send failed`, { email: maskEmail(data?.email ?? ''), store: data?.storeName, date: data?.rosterDate, isFirst, error: error instanceof Error ? error.message : String(error) });
+        console.error(`[LOCUM EMAIL] fail email=${data?.email} store=${data?.storeName} date=${data?.rosterDate} isFirst=${isFirst} reason=${error instanceof Error ? error.message : String(error)}`);
         throw error;
     }
 }
