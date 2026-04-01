@@ -51,7 +51,7 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
         }
 
         let i = 1;
-        let u = 1;
+        let u = 25;
         let attemptCount = 0;
         const maxAttempts = 50; // 무한 루프 방지
 
