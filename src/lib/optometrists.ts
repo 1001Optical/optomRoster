@@ -87,9 +87,11 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
                 },
                 body: JSON.stringify(body ?? {})
             });
-            if (!response.ok) return null;
+            logger.debug(await response.text())
+            // if (!response.ok) return null;
             return response.json();
         } catch (e) {
+            logger.debug(e.toString())
             return null;
         }
     };
