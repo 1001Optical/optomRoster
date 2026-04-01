@@ -87,11 +87,11 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
                 },
                 body: JSON.stringify(body ?? {})
             });
-            logger.debug(await response.text())
+            const responseText = await response.text();
+            logger.debug(responseText);
             // if (!response.ok) return null;
-            return response.json();
+            return responseText ? JSON.parse(responseText) : null;
         } catch (e) {
-            logger.debug(e.toString())
             return null;
         }
     };
