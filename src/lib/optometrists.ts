@@ -148,6 +148,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             lastName: safeLastName && null
         })
 
+        logger.debug(`Searching `, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, email: maskEmail(email ?? "none"), externalId: externalId });
         console.log(result)
 
         if (result?.success && result.data?.optomId) {
