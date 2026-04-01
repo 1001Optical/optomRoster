@@ -144,10 +144,10 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
         // }
 
         const result = await search("/api/optometrist/find", {
-            externalUserId: externalId && null,
-            email: email && null,
-            firstName: safeFirstName && null,
-            lastName: safeLastName && null
+            externalUserId: externalId ?? null,
+            email: email ?? null,
+            firstName: safeFirstName || null,
+            lastName: safeLastName || null
         })
 
         logger.debug(`Searching `, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, email: maskEmail(email ?? "none"), externalId: externalId });
