@@ -148,6 +148,8 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             lastName: safeLastName && null
         })
 
+        console.log(result)
+
         if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
         }
