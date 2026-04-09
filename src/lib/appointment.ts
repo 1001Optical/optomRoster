@@ -43,24 +43,33 @@ export const PostAppAdjust = async (id: number | string, adjust_data: IAdjustDat
 export const PostAppAdjustSwapOptom = async (
     id: number | string,
     adjust_data: IAdjustSwapData,
-    newOptomId: number | string,
-    new_adjust_data: IAdjustSwapData
+    newOptomId?: number | string,
+    new_adjust_data?: IAdjustSwapData
 ) => {
     const url = `${apiUrl}/api/appointments/appAdjust/swapOptom`;
 
     try {
+        const body: {
+            id: number | string;
+            adjust_data: IAdjustSwapData;
+            newOptomId?: number | string;
+            new_adjust_data?: IAdjustSwapData;
+        } = { id, adjust_data };
+
+        if (newOptomId !== undefined) {
+            body.newOptomId = newOptomId;
+        }
+        if (new_adjust_data !== undefined) {
+            body.new_adjust_data = new_adjust_data;
+        }
+
         const result = await apiFetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": API_TOKEN ?? ""
             },
-            body: JSON.stringify({
-                id: id,
-                adjust_data: adjust_data,
-                newOptomId: newOptomId,
-                new_adjust_data: new_adjust_data
-            })
+            body: JSON.stringify(body)
         });
 
         return { ok: true as const, data: result };

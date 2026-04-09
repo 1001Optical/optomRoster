@@ -638,6 +638,38 @@ async function processOptomSwap(
     return [oldResult, newResult];
 }
 
+async function processSwapWithoutNew(
+    oldData: optomData,
+    db: Client,
+    OptomateApiUrl: string
+): Promise<ProcessOptomResult> {
+    const context = await resolveOptomContext(oldData);
+    const adjust = buildAppAdjust(context, false, false);
+
+    logger.info(`Using swapOptom without new data`, {
+        optomId: context.optomId,
+        branch: context.branchInfo.StoreName,
+        date: context.date
+    });
+
+    const swapResponse = await PostAppAdjustSwapOptom(context.optomId, adjust);
+    const swapSuccess = swapResponse.ok === true;
+    if (!swapSuccess) {
+        const err = swapResponse.error instanceof Error ? swapResponse.error.message : String(swapResponse.error);
+        logger.warn(`APP_ADJUST swapOptom failed but continuing`, { error: err });
+    }
+
+    return await finalizeOptomAdjust(
+        context,
+        oldData,
+        db,
+        OptomateApiUrl,
+        "new",
+        adjust,
+        { sendAdjust: false, appAdjustSuccessOverride: swapSuccess }
+    );
+}
+
 // processOptomData 함수 추가
 async function processOptomData(
     optomData: optomData,
@@ -722,16 +754,28 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                 logger.error(`Failed to process swap roster`, { error: String(error) });
             }
         } else {
-            // 변경된 경우: old와 new 모두 처리
+            // 변경된 경우: old/new 조합에 따라 처리
             const dataToProcess: Array<{data: optomData, key: string}> = [];
+            const hasOldValid = !!(diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId);
+            const hasNewValid = !!(diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId);
+
+            if (hasOldValid && !hasNewValid && diffSummary.old) {
+                try {
+                    const result = await processSwapWithoutNew(diffSummary.old, db, OptomateApiUrl);
+                    handleProcessResult(result, "change:old-only", summaries, mismatches, conflicts, locumResults);
+                } catch (error) {
+                    logger.error(`Failed to process old-only roster change`, { error: String(error) });
+                }
+                return { summaries, mismatches, conflicts };
+            }
 
             // old 데이터 처리 (INACTIVE=true)
-            if (diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId) {
+            if (hasOldValid && diffSummary.old) {
                 dataToProcess.push({ data: diffSummary.old, key: "old" });
             }
 
             // new 데이터 처리 (INACTIVE=false)
-            if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
+            if (hasNewValid && diffSummary.new) {
                 dataToProcess.push({ data: diffSummary.new, key: "new" });
             }
 
