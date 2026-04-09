@@ -10,7 +10,7 @@ import {chunk} from "@/lib/utils";
 import {createSecret} from "@/utils/crypto";
 import {calculateSlots} from "@/utils/slots";
 import type { Client } from "@libsql/client";
-import {PostAppAdjust} from "@/lib/appointment";
+import {PostAppAdjust, PostAppAdjustSwapOptom} from "@/lib/appointment";
 import { createLogger, maskName, maskEmail } from "@/lib/logger";
 
 const logger = createLogger('ChangeProcessor');
@@ -23,6 +23,40 @@ interface ProcessedSummary {
     start: string;
     end: string;
 }
+
+interface ProcessOptomResult {
+    isLocum: boolean;
+    emailData?: PostEmailData | null;
+    isFirst?: boolean;
+    workHistory?: string;
+    optomId?: number;
+    summary?: ProcessedSummary;
+    workFirst?: boolean;
+    slotMismatch?: SlotMismatch;
+    appointmentConflict?: AppointmentConflict;
+}
+
+type BranchInfo = (typeof OptomMap)[number];
+
+interface OptomContext {
+    optomId: number;
+    isFirst: boolean;
+    username?: string;
+    branchInfo: BranchInfo;
+    date: string;
+    adjustStart: string;
+    adjustFinish: string;
+    workFirst: boolean;
+    employmentHeroSlots: number;
+}
+
+type AppAdjustData = {
+    ADJUST_DATE: string;
+    BRANCH_IDENTIFIER: string;
+    ADJUST_START: string;
+    ADJUST_FINISH: string;
+    INACTIVE?: boolean;
+};
 
 function logLocumEmailSkip(
     result: { isLocum?: boolean, emailData?: PostEmailData | null, workFirst?: boolean, optomId?: number, summary?: ProcessedSummary },
@@ -290,243 +324,346 @@ async function compareBranchTotalSlots(db: Client): Promise<SlotMismatch[]> {
     return mismatches;
 }
 
+function buildAppAdjust(context: OptomContext, includeInactive: boolean, inactiveValue: boolean): AppAdjustData {
+    const base = {
+        ADJUST_DATE: setTimeZone(`${context.date}T00:00:00`),
+        BRANCH_IDENTIFIER: context.branchInfo.OptCode,
+        ADJUST_START: context.adjustStart,
+        ADJUST_FINISH: context.adjustFinish,
+    };
+
+    if (!includeInactive) {
+        return base;
+    }
+
+    return { ...base, INACTIVE: inactiveValue };
+}
+
+async function resolveOptomContext(optomData: optomData): Promise<OptomContext> {
+    let isFirst = false;
+    let username = undefined;
+    const email = optomData.email;
+    const externalId = optomData.employeeId ? optomData.employeeId.toString() : undefined;
+
+    // 이름으로 먼저 검색, 실패 시 email로 재검색
+    // 검색 실패 시에도 계정 생성을 시도하도록 에러를 catch
+    let optomInfo: { id: number; workHistory: string[] } | undefined = undefined;
+    try {
+        optomInfo = await searchOptomId(optomData.firstName, optomData.lastName, email, externalId);
+    } catch (searchError) {
+        logger.warn(`Search failed, will attempt to create account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, error: String(searchError) });
+        // 검색 실패해도 계속 진행 (계정 생성 시도)
+    }
+
+    let id = optomInfo?.id;
+
+    logger.debug(`Resolved optomId`, { optomId: id });
+
+    // 검색 후 아이디가 없을 시 생성로직 (검색 실패 또는 결과 없음)
+    if (!id) {
+        try {
+            // id가 없으면 employeeId를 사용 (둘 다 Employment Hero 식별자)
+            // id는 roster ID, employeeId는 employee ID
+            const externalId = optomData.id ?? optomData.employeeId;
+            if (!externalId) {
+                throw new Error(`Cannot create account: both id and employeeId are missing for ${optomData.firstName} ${optomData.lastName}`);
+            }
+
+            logger.info(`Creating new account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, externalId });
+            const info = await createOptomAccount(externalId.toString(), optomData.firstName, optomData.lastName, email);
+            id = info.id;
+            username = info.username;
+            isFirst = true;
+            logger.info(`Account created`, { optomId: id, username });
+        } catch (accountError) {
+            logger.error(`Failed to create account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, error: String(accountError) });
+            throw accountError;
+        }
+    }
+
+    // 시간 파싱 및 검증
+    if (!optomData.startTime || !optomData.endTime) {
+        throw new Error("Missing startTime or endTime");
+    }
+
+    const [date, start] = optomData.startTime.split("T");
+    if (!date || !start) {
+        throw new Error("Invalid startTime format");
+    }
+
+    const branchInfo = OptomMap.find(v => v.LocationId === optomData.locationId);
+    if (!branchInfo) {
+        throw new Error(`Unknown locationId: ${optomData.locationId}`);
+    }
+
+    // workHistory에 BRANCH_IDENTIFIER가 없을 때 workFirst = true
+    const workFirst = !optomInfo?.workHistory?.includes(branchInfo.OptCode);
+
+    // Employment Hero 로스터의 타임슬롯 계산
+    const startDate = new Date(optomData.startTime);
+    const endDate = new Date(optomData.endTime);
+    const workMinutes = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60));
+    const employmentHeroSlots = workMinutes > 0 ? calculateSlots(workMinutes) : 0;
+
+    return {
+        optomId: id!,
+        isFirst,
+        username,
+        branchInfo,
+        date,
+        adjustStart: formatHm(start),
+        adjustFinish: formatHm(optomData.endTime.split("T")[1]),
+        workFirst,
+        employmentHeroSlots
+    };
+}
+
+async function computeSlotMismatchForNew(
+    context: OptomContext,
+    optomData: optomData,
+    OptomateApiUrl: string,
+    appAdjustSuccess: boolean
+): Promise<SlotMismatch | undefined> {
+    // Optomate에 데이터가 반영될 시간을 주기 위해 약간 대기 (전송 성공한 경우만)
+    if (appAdjustSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    let optomateSlots = 0;
+    try {
+        optomateSlots = await getOptomateRosterSlots(OptomateApiUrl, context.optomId ?? 0, context.branchInfo.OptCode, context.date);
+
+        // 타임슬롯 비교 (APP_ADJUST 전송 성공 여부와 관계없이 항상 체크)
+        if (context.employmentHeroSlots !== optomateSlots && optomateSlots > 0) {
+            logger.warn(`Slot mismatch`, {
+                branch: context.branchInfo.OptCode,
+                branchName: context.branchInfo.StoreName,
+                date: context.date,
+                optomId: context.optomId,
+                ehSlots: context.employmentHeroSlots,
+                optomateSlots
+            });
+
+            return {
+                branch: context.branchInfo.OptCode,
+                branchName: context.branchInfo.StoreName,
+                date: context.date,
+                optomId: context.optomId,
+                name: `${optomData.firstName} ${optomData.lastName}`,
+                employmentHeroSlots: context.employmentHeroSlots,
+                optomateSlots: optomateSlots
+            };
+        } else if (context.employmentHeroSlots === optomateSlots && optomateSlots > 0) {
+            logger.debug(`Slot match`, { branch: context.branchInfo.OptCode, date: context.date, slots: context.employmentHeroSlots, optomId: context.optomId });
+        }
+    } catch (slotError) {
+        logger.warn(`Failed to get Optomate slots`, { error: slotError instanceof Error ? slotError.message : String(slotError) });
+    }
+
+    return undefined;
+}
+
+async function finalizeOptomAdjust(
+    context: OptomContext,
+    optomData: optomData,
+    db: Client,
+    OptomateApiUrl: string,
+    key: string,
+    appAdjust: AppAdjustData,
+    options?: { sendAdjust?: boolean; skipSlotMismatch?: boolean; appAdjustSuccessOverride?: boolean; }
+): Promise<ProcessOptomResult> {
+    let appAdjustSuccess = false;
+    if (options?.sendAdjust !== false) {
+        const response = await PostAppAdjust(context.optomId, appAdjust as Required<AppAdjustData>);
+        appAdjustSuccess = response.ok === true;
+        if (!appAdjustSuccess) {
+            const err = response.error instanceof Error ? response.error.message : String(response.error);
+            logger.warn(`APP_ADJUST failed but continuing`, { error: err });
+        }
+    }
+
+    const effectiveAdjustSuccess = options?.appAdjustSuccessOverride ?? appAdjustSuccess;
+
+    let slotMismatch: SlotMismatch | undefined = undefined;
+    if (key === "new" && !options?.skipSlotMismatch) {
+        slotMismatch = await computeSlotMismatchForNew(context, optomData, OptomateApiUrl, effectiveAdjustSuccess);
+    }
+
+    // 실패해도 요약/후속 처리는 계속 진행
+
+    // 삭제된 경우 이메일 전송하지 않음
+    let emailData = null;
+    if (key !== "deleted" && optomData.isLocum) {
+        // 스토어 템플릿 조회
+        const template = await dbGet<{ info: string }>(
+            db,
+            'SELECT info FROM STORE_INFO WHERE OptCode = ?',
+            [context.branchInfo.OptCode]
+        );
+
+        // 이메일 데이터 준비 (Locum인 경우만, 삭제가 아닌 경우만)
+        if (context.workFirst) {
+            emailData = {
+                email: optomData.email,
+                lastName: optomData.firstName,
+                storeName: context.branchInfo.StoreName,
+                rosterDate: context.date,
+                rosterStart: context.adjustStart,
+                rosterEnd: context.adjustFinish,
+                storeTemplet: template?.info ?? "",
+                optomateId: context.username,
+                optomatePw: context.username ? '1001' : undefined,
+            };
+        }
+    }
+
+    // 요약 정보 생성
+    const summary: ProcessedSummary = {
+        name: `${optomData.firstName} ${optomData.lastName}`,
+        optomId: context.optomId,
+        date: context.date,
+        start: context.adjustStart,
+        end: context.adjustFinish
+    };
+
+    return {
+        isLocum: optomData.isLocum === 1,
+        emailData,
+        isFirst: context.isFirst,
+        workHistory: context.branchInfo.OptCode,
+        optomId: context.optomId,
+        summary,
+        workFirst: context.workFirst,
+        slotMismatch,
+        appointmentConflict: undefined
+    };
+}
+
+function handleProcessResult(
+    result: ProcessOptomResult,
+    context: string,
+    summaries: ProcessedSummary[],
+    mismatches: SlotMismatch[],
+    conflicts: AppointmentConflict[],
+    locumResults: {emailData?: PostEmailData | null, isFirst?: boolean, optomId?: number, workHistory?: string}[]
+) {
+    if (result.summary) {
+        summaries.push(result.summary);
+        if (result.slotMismatch) {
+            mismatches.push(result.slotMismatch);
+        }
+        if (result.isLocum && result.emailData && result.workFirst) {
+            locumResults.push({
+                emailData: result.emailData,
+                isFirst: result.isFirst,
+                optomId: result.optomId,
+                workHistory: result.workHistory
+            });
+        } else {
+            logLocumEmailSkip(result, context);
+        }
+    }
+    if (result.appointmentConflict) {
+        conflicts.push(result.appointmentConflict);
+    }
+}
+
+function isSwapOptomChange(diffSummary: { old?: optomData; new?: optomData }): boolean {
+    const oldData = diffSummary.old;
+    const newData = diffSummary.new;
+    if (!oldData || !newData) return false;
+    if (!oldData.employeeId || !newData.employeeId) return false;
+    if (oldData.employeeId === newData.employeeId) return false;
+    if (!oldData.locationId || !newData.locationId) return false;
+    if (oldData.locationId !== newData.locationId) return false;
+    if (!oldData.startTime || !newData.startTime) return false;
+    const oldDate = oldData.startTime.split("T")[0];
+    const newDate = newData.startTime.split("T")[0];
+    if (!oldDate || !newDate || oldDate !== newDate) return false;
+    return true;
+}
+
+async function processOptomSwap(
+    oldData: optomData,
+    newData: optomData,
+    db: Client,
+    OptomateApiUrl: string
+): Promise<ProcessOptomResult[]> {
+    const oldContext = await resolveOptomContext(oldData);
+    const newContext = await resolveOptomContext(newData);
+
+    const oldSwapAdjust = buildAppAdjust(oldContext, false, false);
+    const newSwapAdjust = buildAppAdjust(newContext, false, false);
+
+    logger.info(`Using swapOptom`, {
+        oldOptomId: oldContext.optomId,
+        newOptomId: newContext.optomId,
+        branch: oldContext.branchInfo.StoreName,
+        date: oldContext.date
+    });
+
+    const swapResponse = await PostAppAdjustSwapOptom(
+        oldContext.optomId,
+        oldSwapAdjust,
+        newContext.optomId,
+        newSwapAdjust
+    );
+
+    const swapSuccess = swapResponse.ok === true;
+    if (!swapSuccess) {
+        const err = swapResponse.error instanceof Error ? swapResponse.error.message : String(swapResponse.error);
+        logger.warn(`APP_ADJUST swapOptom failed but continuing`, { error: err });
+    }
+
+    const oldResult = await finalizeOptomAdjust(
+        oldContext,
+        oldData,
+        db,
+        OptomateApiUrl,
+        "old",
+        oldSwapAdjust,
+        { sendAdjust: false, skipSlotMismatch: true }
+    );
+
+    const newResult = await finalizeOptomAdjust(
+        newContext,
+        newData,
+        db,
+        OptomateApiUrl,
+        "new",
+        newSwapAdjust,
+        { sendAdjust: false, appAdjustSuccessOverride: swapSuccess }
+    );
+
+    return [oldResult, newResult];
+}
+
 // processOptomData 함수 추가
 async function processOptomData(
     optomData: optomData,
     db: Client,
     OptomateApiUrl: string,
     key: string
-): Promise<{isLocum: boolean, emailData?: PostEmailData | null, isFirst?: boolean, workHistory?: string, optomId?: number, summary?: ProcessedSummary, workFirst?: boolean, slotMismatch?: SlotMismatch, appointmentConflict?: AppointmentConflict}> {
+): Promise<ProcessOptomResult> {
     try {
-        let isFirst = false;
-        let username = undefined;
-        const email = optomData.email;
-        const externalId = optomData.employeeId.toString();
-
-        // 이름으로 먼저 검색, 실패 시 email로 재검색
-        // 검색 실패 시에도 계정 생성을 시도하도록 에러를 catch
-        let optomInfo: { id: number; workHistory: string[] } | undefined = undefined;
-        try {
-            optomInfo = await searchOptomId(optomData.firstName, optomData.lastName, email, externalId);
-        } catch (searchError) {
-            logger.warn(`Search failed, will attempt to create account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, error: String(searchError) });
-            // 검색 실패해도 계속 진행 (계정 생성 시도)
-        }
-
-        let id = optomInfo?.id;
-
-        logger.debug(`Resolved optomId`, { optomId: id });
-
-        // 검색 후 아이디가 없을 시 생성로직 (검색 실패 또는 결과 없음)
-        if(!id) {
-            try {
-                // id가 없으면 employeeId를 사용 (둘 다 Employment Hero 식별자)
-                // id는 roster ID, employeeId는 employee ID
-                const externalId = optomData.id ?? optomData.employeeId;
-                if (!externalId) {
-                    throw new Error(`Cannot create account: both id and employeeId are missing for ${optomData.firstName} ${optomData.lastName}`);
-                }
-
-                logger.info(`Creating new account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, externalId });
-                const info = await createOptomAccount(externalId.toString(), optomData.firstName, optomData.lastName, email);
-                id = info.id;
-                username = info.username;
-                isFirst = true;
-                logger.info(`Account created`, { optomId: id, username });
-            } catch (accountError) {
-                logger.error(`Failed to create account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, error: String(accountError) });
-                throw accountError;
-            }
-        }
-
-        // 시간 파싱 및 검증
-        if (!optomData.startTime || !optomData.endTime) {
-            throw new Error("Missing startTime or endTime");
-        }
-
-        const [date, start] = optomData.startTime.split("T");
-        if (!date || !start) {
-            throw new Error("Invalid startTime format");
-        }
-
-        const branchInfo = OptomMap.find(v => v.LocationId === optomData.locationId);
-        if (!branchInfo) {
-            throw new Error(`Unknown locationId: ${optomData.locationId}`);
-        }
-
-        // workHistory에 BRANCH_IDENTIFIER가 없을 때 workFirst = true
-        const workFirst = !optomInfo?.workHistory?.includes(branchInfo.OptCode);
-
-        // Employment Hero 로스터의 타임슬롯 계산
-        const startDate = new Date(optomData.startTime);
-        const endDate = new Date(optomData.endTime);
-        const workMinutes = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60));
-        const employmentHeroSlots = workMinutes > 0 ? calculateSlots(workMinutes) : 0;
-
-        const APP_ADJUST = {
-            ADJUST_DATE: setTimeZone(`${date}T00:00:00`),
-            BRANCH_IDENTIFIER: branchInfo.OptCode,
-            ADJUST_START: formatHm(start),
-            ADJUST_FINISH: formatHm(optomData.endTime.split("T")[1]),
-            INACTIVE: key !== "new"  // "new"가 아니면 INACTIVE=true (old, deleted 모두)
-        }
-
-        // INACTIVE로 설정하기 전에 appointment 확인 (deleted 또는 old인 경우)
-        let appointmentConflict: AppointmentConflict | undefined = undefined;
-        if (key !== "new") {
-            const { hasAppointments, isApiError } = await checkOptometristAppointments(
-                OptomateApiUrl,
-                id!,
-                branchInfo.OptCode,
-                date,
-                optomData.startTime,
-                optomData.endTime
-            );
-
-            if (hasAppointments) {
-                logger.warn(`Appointment conflict — skipping AppAdjust INACTIVE`, {
-                    optomId: id,
-                    name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`,
-                    email: maskEmail(optomData.email),
-                    date,
-                    branch: branchInfo.StoreName,
-                    isApiError
-                });
-
-                // Appointment 충돌 정보 저장
-                appointmentConflict = {
-                    branch: branchInfo.OptCode,
-                    branchName: branchInfo.StoreName,
-                    date: date,
-                    optomId: id!,
-                    name: `${optomData.firstName} ${optomData.lastName}`,
-                    email: optomData.email,
-                    startTime: optomData.startTime,
-                    endTime: optomData.endTime,
-                    changeType: key === "deleted" ? "roster_deleted" : "roster_changed",
-                    isApiError,
-                };
-
-                // Appointment가 있으면 AppAdjust 전송하지 않고 에러만 반환
-                // (slotMismatch는 "new"인 경우에만 체크하므로 여기서는 undefined)
-                return {
-                    isLocum: optomData.isLocum === 1,
-                    emailData: null,
-                    isFirst,
-                    workHistory: branchInfo.OptCode,
-                    optomId: id,
-                    summary: undefined,
-                    workFirst,
-                    slotMismatch: undefined,
-                    appointmentConflict
-                };
-            }
-        }
+        const context = await resolveOptomContext(optomData);
+        const appAdjust = buildAppAdjust(context, true, key !== "new");
 
         if (key === "deleted") {
-            logger.info(`Setting AppAdjust INACTIVE for deleted roster`, { optomId: id, branch: branchInfo.StoreName, date });
+            logger.info(`Setting AppAdjust INACTIVE for deleted roster`, { optomId: context.optomId, branch: context.branchInfo.StoreName, date: context.date });
         } else if (key === "old") {
-            logger.info(`Setting AppAdjust INACTIVE for changed roster (old)`, { optomId: id, branch: branchInfo.StoreName, date });
+            logger.info(`Setting AppAdjust INACTIVE for changed roster (old)`, { optomId: context.optomId, branch: context.branchInfo.StoreName, date: context.date });
         }
 
-        // 로스터를 옵토메이트에 보내기 (실패해도 계속 진행)
-        const response = await PostAppAdjust(id, APP_ADJUST);
-
-        // 응답 상태 확인 (전송 실패해도 슬롯 미스매치는 체크해야 함)
-        const appAdjustSuccess = response.ok === true;
-        if (!appAdjustSuccess) {
-            const err = response.error instanceof Error ? response.error.message : String(response.error);
-            logger.warn(`APP_ADJUST failed but continuing`, { error: err });
-        }
-
-        // APP_ADJUST 전송 후 타임슬롯 비교 (key가 "new"인 경우만, 전송 성공 여부와 관계없이 항상 체크)
-        let slotMismatch: SlotMismatch | undefined = undefined;
-        if (key === "new") {
-            // Optomate에 데이터가 반영될 시간을 주기 위해 약간 대기 (전송 성공한 경우만)
-            if (appAdjustSuccess) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-
-            let optomateSlots = 0;
-            try {
-                optomateSlots = await getOptomateRosterSlots(OptomateApiUrl, id??0, branchInfo.OptCode, date);
-
-                // 타임슬롯 비교 (APP_ADJUST 전송 성공 여부와 관계없이 항상 체크)
-                if (employmentHeroSlots !== optomateSlots && optomateSlots > 0) {
-                    logger.warn(`Slot mismatch`, {
-                        branch: branchInfo.OptCode,
-                        branchName: branchInfo.StoreName,
-                        date,
-                        optomId: id,
-                        ehSlots: employmentHeroSlots,
-                        optomateSlots
-                    });
-
-                    slotMismatch = {
-                        branch: branchInfo.OptCode,
-                        branchName: branchInfo.StoreName,
-                        date: date,
-                        optomId: id!,
-                        name: `${optomData.firstName} ${optomData.lastName}`,
-                        employmentHeroSlots: employmentHeroSlots,
-                        optomateSlots: optomateSlots
-                    };
-                } else if (employmentHeroSlots === optomateSlots && optomateSlots > 0) {
-                    logger.debug(`Slot match`, { branch: branchInfo.OptCode, date, slots: employmentHeroSlots, optomId: id });
-                }
-            } catch (slotError) {
-                logger.warn(`Failed to get Optomate slots`, { error: slotError instanceof Error ? slotError.message : String(slotError) });
-            }
-        }
-
-        // 실패해도 요약/후속 처리는 계속 진행
-
-        // 삭제된 경우 이메일 전송하지 않음
-        let emailData = null;
-        if (key !== "deleted" && optomData.isLocum) {
-        // 스토어 템플릿 조회
-        const template = await dbGet<{ info: string }>(
+        return await finalizeOptomAdjust(
+            context,
+            optomData,
             db,
-            'SELECT info FROM STORE_INFO WHERE OptCode = ?',
-            [APP_ADJUST.BRANCH_IDENTIFIER]
+            OptomateApiUrl,
+            key,
+            appAdjust,
+            { sendAdjust: true }
         );
-
-            // 이메일 데이터 준비 (Locum인 경우만, 삭제가 아닌 경우만)
-            if(workFirst) {
-                emailData = {
-                    email,
-                    lastName: optomData.firstName,
-                    storeName: branchInfo.StoreName,
-                    rosterDate: date,
-                    rosterStart: APP_ADJUST.ADJUST_START,
-                    rosterEnd: APP_ADJUST.ADJUST_FINISH,
-                    storeTemplet: template?.info ?? "",
-                    optomateId: username,
-                    optomatePw: username ? '1001' : undefined,
-                };
-            }
-        }
-
-        // 요약 정보 생성
-        const summary: ProcessedSummary = {
-            name: `${optomData.firstName} ${optomData.lastName}`,
-            optomId: id!,
-            date: date,
-            start: APP_ADJUST.ADJUST_START,
-            end: APP_ADJUST.ADJUST_FINISH
-        };
-
-        return {
-            isLocum: optomData.isLocum === 1,
-            emailData,
-            isFirst,
-            workHistory: APP_ADJUST.BRANCH_IDENTIFIER,
-            optomId: id,
-            summary,
-            workFirst,
-            slotMismatch,
-            appointmentConflict: undefined
-        };
     } catch (error) {
         throw error;
     }
@@ -570,54 +707,52 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
             }
         }
     } else if (changeLog.changeType === 'roster_changed') {
-        // 변경된 경우: old와 new 모두 처리
-        const dataToProcess: Array<{data: optomData, key: string}> = [];
-
-        // old 데이터 처리 (INACTIVE=true)
-        if (diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId) {
-            dataToProcess.push({ data: diffSummary.old, key: "old" });
-        }
-
-        // new 데이터 처리 (INACTIVE=false)
-        if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
-            dataToProcess.push({ data: diffSummary.new, key: "new" });
-        }
-
-        // 순차 처리
-    for (let i = 0; i < dataToProcess.length; i++) {
-        const {data, key} = dataToProcess[i];
-
-        try {
-            const result = await processOptomData(data, db, OptomateApiUrl, key);
-            if (result.summary) {
-                summaries.push(result.summary);
-                if (result.slotMismatch) {
-                    mismatches.push(result.slotMismatch);
-                }
-                if (result.isLocum && result.emailData && result.workFirst) {
-                    locumResults.push({
-                        emailData: result.emailData,
-                        isFirst: result.isFirst,
-                        optomId: result.optomId,
-                        workHistory: result.workHistory
-                    });
-                } else {
-                    logLocumEmailSkip(result, `change:${key}`);
-                }
+        if (diffSummary.old && diffSummary.new && isSwapOptomChange(diffSummary)) {
+            logger.info(`Processing swap roster`, {
+                oldName: `${maskName(diffSummary.old.firstName)} ${maskName(diffSummary.old.lastName)}`,
+                newName: `${maskName(diffSummary.new.firstName)} ${maskName(diffSummary.new.lastName)}`
+            });
+            try {
+                const swapResults = await processOptomSwap(diffSummary.old, diffSummary.new, db, OptomateApiUrl);
+                swapResults.forEach((result, index) => {
+                    const label = index === 0 ? "old" : "new";
+                    handleProcessResult(result, `swap:${label}`, summaries, mismatches, conflicts, locumResults);
+                });
+            } catch (error) {
+                logger.error(`Failed to process swap roster`, { error: String(error) });
             }
-                if (result.appointmentConflict) {
-                    conflicts.push(result.appointmentConflict);
+        } else {
+            // 변경된 경우: old와 new 모두 처리
+            const dataToProcess: Array<{data: optomData, key: string}> = [];
+
+            // old 데이터 처리 (INACTIVE=true)
+            if (diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId) {
+                dataToProcess.push({ data: diffSummary.old, key: "old" });
             }
 
-            // 마지막 요청이 아니면 1초 대기
-            if (i < dataToProcess.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            // new 데이터 처리 (INACTIVE=false)
+            if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
+                dataToProcess.push({ data: diffSummary.new, key: "new" });
             }
-        } catch (error) {
-                logger.error(`Failed to process ${key} roster data`, { error: String(error) });
-            // 에러 발생 시에도 마지막 요청이 아니면 1초 대기
-            if (i < dataToProcess.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // 순차 처리
+            for (let i = 0; i < dataToProcess.length; i++) {
+                const {data, key} = dataToProcess[i];
+
+                try {
+                    const result = await processOptomData(data, db, OptomateApiUrl, key);
+                    handleProcessResult(result, `change:${key}`, summaries, mismatches, conflicts, locumResults);
+
+                    // 마지막 요청이 아니면 1초 대기
+                    if (i < dataToProcess.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                } catch (error) {
+                    logger.error(`Failed to process ${key} roster data`, { error: String(error) });
+                    // 에러 발생 시에도 마지막 요청이 아니면 1초 대기
+                    if (i < dataToProcess.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
                 }
             }
         }
@@ -626,25 +761,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
             try {
                 const result = await processOptomData(diffSummary.new, db, OptomateApiUrl, "new");
-                if (result.summary) {
-                    summaries.push(result.summary);
-                    if (result.slotMismatch) {
-                        mismatches.push(result.slotMismatch);
-                    }
-                    if (result.isLocum && result.emailData && result.workFirst) {
-                        locumResults.push({
-                            emailData: result.emailData,
-                            isFirst: result.isFirst,
-                            optomId: result.optomId,
-                            workHistory: result.workHistory
-                        });
-                    } else {
-                        logLocumEmailSkip(result, "insert:new");
-                    }
-                }
-                if (result.appointmentConflict) {
-                    conflicts.push(result.appointmentConflict);
-                }
+                handleProcessResult(result, "insert:new", summaries, mismatches, conflicts, locumResults);
             } catch (error) {
                 logger.error(`Failed to process inserted roster`, { error: String(error) });
             }
@@ -826,27 +943,7 @@ async function checkOptometristAppointments(
     endTime: string
 ): Promise<{ hasAppointments: boolean; isApiError: boolean }> {
     try {
-        // 날짜 범위를 브랜치 시간대로 변환
-        const { fromZonedTime } = await import("date-fns-tz");
-
-        // 브랜치 시간대 가져오기
-        const store = OptomMap.find((s) => s.OptCode === branchCode);
-        let timezone = "Australia/Sydney";
-        if (store) {
-            switch (store.State) {
-                case "NSW":
-                    timezone = "Australia/Sydney";
-                    break;
-                case "VIC":
-                    timezone = "Australia/Melbourne";
-                    break;
-                case "QLD":
-                    timezone = "Australia/Brisbane";
-                    break;
-            }
-        }
-
-        // startTime과 endTime을 브랜치 시간대로 변환
+        // startTime/endTime은 UTC 문자열로 전달됨
         const startDate = new Date(startTime);
         const endDate = new Date(endTime);
 

@@ -118,31 +118,6 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             return { id: data.optomId, workHistory: data.workHistory };
         };
 
-        // // 1) ExternalId 우선
-        // if (externalId) {
-        //     logger.debug(`Searching by externalId`, { externalId });
-        //     const result = await search("/api/optometrist/searchByExternalUserId", { externalUserId: externalId });
-        //     if (result?.success && result.data?.optomId) {
-        //         return setAndReturn(result.data);
-        //     }
-        // }
-        //
-        // // 2) Email
-        // if (email) {
-        //     logger.debug(`Searching by email`, { email: maskEmail(email) });
-        //     const result = await search("/api/optometrist/searchByEmail", { email });
-        //     if (result?.success && result.data?.optomId) {
-        //         return setAndReturn(result.data);
-        //     }
-        // }
-        //
-        // // 3) 이름
-        // logger.debug(`Searching by name`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}` });
-        // const result = await search("/api/optometrist/search", { firstName: safeFirstName, lastName: safeLastName });
-        // if (result?.success && result.data?.optomId) {
-        //     return setAndReturn(result.data);
-        // }
-
         const result = await search("/api/optometrist/find", {
             externalUserId: externalId ?? null,
             email: email ?? null,

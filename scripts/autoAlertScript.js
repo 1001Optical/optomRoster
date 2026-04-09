@@ -41,6 +41,7 @@ function toBase64Url(str) {
 const BASE_URL = "https://1001optdb.habitat3.net:12443/OptomateTouch/OData4/";
 const TOKEN = createSecret("1001_HO_JH", "10011001")
 const TO_EMAILS = "shannon@1001optical.com.au"
+const CC_EMAILS = "gijung1001optical@gmail.com"
 
 const ITEMS = [
     {barcode: "20015195", alertPoint: 60},
@@ -53,6 +54,7 @@ const ITEMS = [
     {barcode: "20021695", alertPoint: 140},
     {barcode: "20021701", alertPoint: 5},
     {barcode: "20021702", alertPoint: 20},
+    {barcode: "20059768", alertPoint: 20},
 ]
 
 // =====================
@@ -165,10 +167,11 @@ function buildHtml(rows) {
   `;
 }
 
-export async function sendGmailHtml({ to, subject, html }) {
+export async function sendGmailHtml({ to, subject, cc, html }) {
     const raw = [
         `From: ${process.env.GMAIL_SENDER}`,
         `To: ${to}`,
+        `CC: ${cc}`,
         `Subject: ${subject}`,
         "MIME-Version: 1.0",
         'Content-Type: text/html; charset="UTF-8"',
@@ -199,6 +202,7 @@ export async function sendGmailHtml({ to, subject, html }) {
 
         await sendGmailHtml({
             to: TO_EMAILS,
+            cc: CC_EMAILS,
             subject: "[Warning] Stationery Low Stock Alert",
             html: mailHtml
         })
