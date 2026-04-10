@@ -46,3 +46,8 @@ gmail_token.json
 .claude
 plan
 *.xml
+
+.cursor
+.idea/
+1001optom_roster_automation.iml
+package-lock.json
