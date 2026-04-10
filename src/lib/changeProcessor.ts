@@ -11,7 +11,7 @@ import {createSecret} from "@/utils/crypto";
 import {calculateSlots} from "@/utils/slots";
 import type { Client } from "@libsql/client";
 import {PostAppAdjust, PostAppAdjustSwapOptom} from "@/lib/appointment";
-import { createLogger, maskName, maskEmail } from "@/lib/logger";
+import { createLogger, maskName } from "@/lib/logger";
 
 const logger = createLogger('ChangeProcessor');
 
@@ -106,11 +106,7 @@ export interface AppointmentConflict {
 // ---- 외부 API 전송 함수 ----
 // locationFilter: 처리할 locationId 제한 (없으면 전체)
 // skipEmail: legacy param (email alerts disabled)
-export async function sendChangeToOptomateAPI(
-    isScheduler: boolean = false,
-    locationFilter?: number[],
-    skipEmail: boolean = false
-): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
+export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promise<{slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> {
     const db = await getDB();
     const raw = await dbAll<ChangeLog>(db, `SELECT * FROM CHANGE_LOG`);
 
@@ -214,114 +210,6 @@ export async function sendChangeToOptomateAPI(
     // Appointment conflict email alerts disabled for performance.
 
     return { slotMismatches, appointmentConflicts };
-}
-
-/**
- * 브랜치 전체 타임슬롯 비교 (EH vs Optomate)
- */
-async function compareBranchTotalSlots(db: Client): Promise<SlotMismatch[]> {
-    const mismatches: SlotMismatch[] = [];
-
-    try {
-        const OptomateApiUrl = process.env.OPTOMATE_API_URL;
-        if (!OptomateApiUrl) {
-            logger.warn(`OPTOMATE_API_URL not set, skipping branch comparison`);
-            return [];
-        }
-
-        // CHANGE_LOG에서 처리된 모든 날짜와 브랜치 추출
-        // windowStart와 windowEnd를 사용하여 날짜 범위 파악
-        const changeLogs = await dbAll<{
-            windowStart: string;
-            windowEnd: string;
-            locationId: number | null;
-            oldLocationId: number | null;
-        }>(
-            db,
-            `
-            SELECT DISTINCT
-                windowStart,
-                windowEnd,
-                json_extract(diffSummary, '$.new.locationId') as locationId,
-                json_extract(diffSummary, '$.old.locationId') as oldLocationId
-            FROM CHANGE_LOG
-            WHERE diffSummary IS NOT NULL
-        `
-        );
-
-        // 날짜별, 브랜치별로 그룹화
-        const branchDateMap = new Map<string, Set<string>>(); // branchCode -> Set<date>
-
-        for (const log of changeLogs) {
-            const locationId = log.locationId || log.oldLocationId;
-            if (!locationId) continue;
-
-            const branchInfo = OptomMap.find(v => v.LocationId === locationId);
-            if (!branchInfo) continue;
-
-            const branchCode = branchInfo.OptCode;
-
-            // windowStart와 windowEnd 사이의 모든 날짜 추출
-            const startDate = log.windowStart.split('T')[0];
-            const endDate = log.windowEnd.split('T')[0];
-
-            // 날짜 범위의 모든 날짜 추가
-            const start = new Date(startDate);
-            const end = new Date(endDate);
-            const current = new Date(start);
-
-            while (current <= end) {
-                const dateStr = current.toISOString().split('T')[0];
-                if (!branchDateMap.has(branchCode)) {
-                    branchDateMap.set(branchCode, new Set());
-                }
-                branchDateMap.get(branchCode)!.add(dateStr);
-                current.setDate(current.getDate() + 1);
-            }
-        }
-
-        // 각 브랜치/날짜별로 비교
-        for (const [branchCode, dates] of branchDateMap.entries()) {
-            for (const date of dates) {
-                try {
-                    // EH 브랜치 전체 타임슬롯 계산
-                    const ehSlots = await getEHBranchTotalSlots(db, branchCode, date);
-
-                    // Optomate 브랜치 전체 타임슬롯 가져오기
-                    const optomateSlots = await getBranchTotalSlots(OptomateApiUrl, branchCode, date);
-
-                    // 비교 (둘 다 0이 아닌 경우에만 비교)
-                    if (ehSlots > 0 || optomateSlots > 0) {
-                        if (ehSlots !== optomateSlots) {
-                            const branchInfo = OptomMap.find(v => v.OptCode === branchCode);
-                            logger.warn(`Branch slot mismatch`, { branch: branchCode, branchName: branchInfo?.StoreName, date, ehSlots, optomateSlots });
-
-                            mismatches.push({
-                                branch: branchCode,
-                                branchName: branchInfo?.StoreName || branchCode,
-                                date: date,
-                                optomId: 0, // 브랜치 전체는 optomId 없음
-                                name: "Branch Total",
-                                employmentHeroSlots: ehSlots,
-                                optomateSlots: optomateSlots
-                            });
-                        } else if (ehSlots > 0 && optomateSlots > 0) {
-                            logger.debug(`Branch slot match`, { branch: branchCode, date, slots: ehSlots });
-                        }
-                    }
-
-                    // API 부하 방지를 위해 약간 대기
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                } catch (error) {
-                    logger.error(`Error comparing branch slots`, { branch: branchCode, date, error: String(error) });
-                }
-            }
-        }
-    } catch (error) {
-        logger.error(`Error in branch comparison`, { error: String(error) });
-    }
-
-    return mismatches;
 }
 
 function buildAppAdjust(context: OptomContext, includeInactive: boolean, inactiveValue: boolean): AppAdjustData {
@@ -972,80 +860,6 @@ async function getBranchTotalSlots(
     } catch (error) {
         logger.warn(`Error getting branch total slots`, { error: error instanceof Error ? error.message : String(error) });
         return 0;
-    }
-}
-
-/**
- * 특정 optometrist의 특정 날짜/시간대에 appointment가 있는지 확인
- */
-async function checkOptometristAppointments(
-    OptomateApiUrl: string,
-    optomId: number,
-    branchCode: string,
-    date: string,
-    startTime: string,
-    endTime: string
-): Promise<{ hasAppointments: boolean; isApiError: boolean }> {
-    try {
-        // startTime/endTime은 UTC 문자열로 전달됨
-        const startDate = new Date(startTime);
-        const endDate = new Date(endTime);
-
-        // UTC를 브랜치 로컬 시간으로 변환
-        const startUtc = startDate.toISOString().replace(/\.\d{3}Z$/, "Z");
-        const endUtc = endDate.toISOString().replace(/\.\d{3}Z$/, "Z");
-
-        // Optomate API에서 해당 optomId의 appointment 조회
-        const filter = [
-            `OPTOMETRIST_ID eq ${optomId}`,
-            `BRANCH_IDENTIFIER eq '${branchCode}'`,
-            `STARTDATETIME ge ${startUtc}`,
-            `STARTDATETIME lt ${endUtc}`,
-            `APPOINTMENT_TYPE ne 'NA'`,
-            `STATUS ne 6`,  // 취소되지 않은 예약만
-            `STATUS ne 7`,
-            `STATUS ne 9`,
-        ].join(" and ");
-
-        const params = new URLSearchParams({
-            $filter: filter,
-            $top: "1", // 하나만 있으면 충분
-        });
-
-        const url = `${OptomateApiUrl}/Appointments?${params.toString()}`;
-
-        const response = await fetch(url, {
-            headers: {
-                "Content-Type": "application/json",
-                "authorization": createSecret("1001_HO_JH", "10011001"),
-            },
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => '');
-            logger.error(`Failed to check appointments`, { status: response.status, statusText: response.statusText, optomId, branch: branchCode, date });
-            // API 호출 실패 시 삭제 차단 (확인 불가 = 안전하게 막기)
-            // isApiError=true → conflict 기록되지만 CHANGE_LOG는 삭제됨 (재시도 불필요)
-            return { hasAppointments: true, isApiError: true };
-        }
-
-        const result = await response.json();
-        const appointments = result.value || [];
-
-        const hasAppointments = appointments.length > 0;
-
-        if (hasAppointments) {
-            logger.warn(`Appointments found for optomId on date`, { optomId, date, branch: branchCode, count: appointments.length });
-        } else {
-            logger.debug(`No appointments found`, { optomId, date, branch: branchCode });
-        }
-
-        return { hasAppointments, isApiError: false };
-    } catch (error) {
-        logger.error(`Error checking appointments`, { error: error instanceof Error ? error.message : String(error) });
-        // 예외 발생 시 삭제 차단 (확인 불가 = 안전하게 막기)
-        // isApiError=true → conflict 기록되지만 CHANGE_LOG는 삭제됨 (재시도 불필요)
-        return { hasAppointments: true, isApiError: true };
     }
 }
 

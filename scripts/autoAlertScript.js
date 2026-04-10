@@ -39,7 +39,7 @@ function toBase64Url(str) {
 // CONFIG (env)
 // =====================
 const BASE_URL = "https://1001optdb.habitat3.net:12443/OptomateTouch/OData4/";
-const TOKEN = createSecret("1001_HO_JH", "10011001")
+const TOKEN = createSecret(process.env.OPTOMATE_USERNAME, process.env.OPTOMATE_PASSWORD);
 const TO_EMAILS = "shannon@1001optical.com.au"
 const CC_EMAILS = "gijung1001optical@gmail.com"
 
