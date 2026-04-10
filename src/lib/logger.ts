@@ -1,4 +1,3 @@
-import { format } from "node:util";
 import { axiomLogger } from "@/lib/axiom/server";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -61,6 +60,17 @@ function normalizeContext(ctx?: Record<string, unknown>): Record<string, unknown
   return normalized as Record<string, unknown>;
 }
 
+function stringifyValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+
+  try {
+    return JSON.stringify(normalizeValue(value));
+  } catch {
+    return String(value);
+  }
+}
+
 function buildConsolePayload(args: unknown[]): {
   message: string;
   fields?: Record<string, unknown>;
@@ -96,7 +106,7 @@ function buildConsolePayload(args: unknown[]): {
   }
 
   return {
-    message: format(first),
+    message: stringifyValue(first),
     fields: rest.length > 0 ? { args: rest.map(normalizeValue) } : undefined,
   };
 }
