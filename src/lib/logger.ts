@@ -19,14 +19,30 @@ const originalConsole = {
 
 let isConsolePatched = false;
 
-function getMinLevel(): LogLevel {
+/** 터미널 / Vercel 함수 로그에 쓸 최소 레벨 */
+function getConsoleMinLevel(): LogLevel {
   const envLevel = process.env.LOG_LEVEL as LogLevel;
   if (envLevel && envLevel in LOG_LEVELS) return envLevel;
   return process.env.NODE_ENV === "production" ? "warn" : "debug";
 }
 
-function shouldLog(level: LogLevel): boolean {
-  return LOG_LEVELS[getMinLevel()] <= LOG_LEVELS[level];
+/**
+ * Axiom으로 보낼 최소 레벨 (콘솔과 독립).
+ * 기본은 로컬·프로덕션 모두 `debug` 이상 전송(프로세스 전반 가시성).
+ * 볼륨을 줄이려면 예: `AXIOM_LOG_LEVEL=info` 또는 `warn`.
+ */
+function getAxiomMinLevel(): LogLevel {
+  const envLevel = process.env.AXIOM_LOG_LEVEL as LogLevel;
+  if (envLevel && envLevel in LOG_LEVELS) return envLevel;
+  return "debug";
+}
+
+function shouldConsoleLog(level: LogLevel): boolean {
+  return LOG_LEVELS[getConsoleMinLevel()] <= LOG_LEVELS[level];
+}
+
+function shouldAxiomLog(level: LogLevel): boolean {
+  return LOG_LEVELS[getAxiomMinLevel()] <= LOG_LEVELS[level];
 }
 
 function serializeError(error: Error) {
@@ -135,7 +151,7 @@ function sendToAxiom(
   message: string,
   fields?: Record<string, unknown>,
 ) {
-  if (!axiomLogger || !shouldLog(level)) return;
+  if (!axiomLogger || !shouldAxiomLog(level)) return;
   axiomLogger[level](message, fields);
 }
 
@@ -202,23 +218,30 @@ export function maskName(name: string): string {
 export function createLogger(module: string) {
   return {
     debug: (msg: string, ctx?: Record<string, unknown>) => {
-      if (!shouldLog("debug")) return;
-      writeToConsole("debug", `[${module}] ${msg}`, ctx);
-      sendToAxiom("debug", msg, { module, ...normalizeContext(ctx) });
+      const ctxNorm = normalizeContext(ctx);
+      if (shouldConsoleLog("debug")) {
+        writeToConsole("debug", `[${module}] ${msg}`, ctxNorm);
+      }
+      sendToAxiom("debug", msg, { module, ...ctxNorm });
     },
     info: (msg: string, ctx?: Record<string, unknown>) => {
-      if (!shouldLog("info")) return;
-      writeToConsole("info", `[${module}] ${msg}`, ctx);
-      sendToAxiom("info", msg, { module, ...normalizeContext(ctx) });
+      const ctxNorm = normalizeContext(ctx);
+      if (shouldConsoleLog("info")) {
+        writeToConsole("info", `[${module}] ${msg}`, ctxNorm);
+      }
+      sendToAxiom("info", msg, { module, ...ctxNorm });
     },
     warn: (msg: string, ctx?: Record<string, unknown>) => {
-      if (!shouldLog("warn")) return;
-      writeToConsole("warn", `[${module}] ${msg}`, ctx);
-      sendToAxiom("warn", msg, { module, ...normalizeContext(ctx) });
+      const ctxNorm = normalizeContext(ctx);
+      if (shouldConsoleLog("warn")) {
+        writeToConsole("warn", `[${module}] ${msg}`, ctxNorm);
+      }
+      sendToAxiom("warn", msg, { module, ...ctxNorm });
     },
     error: (msg: string, ctx?: Record<string, unknown>) => {
-      writeToConsole("error", `[${module}] ${msg}`, ctx);
-      sendToAxiom("error", msg, { module, ...normalizeContext(ctx) });
+      const ctxNorm = normalizeContext(ctx);
+      writeToConsole("error", `[${module}] ${msg}`, ctxNorm);
+      sendToAxiom("error", msg, { module, ...ctxNorm });
     },
   };
 }

@@ -1,4 +1,5 @@
 import { createLogger, maskEmail, maskName } from "@/lib/logger";
+import { fetch1001OptometristApi } from "@/services/apiFetch";
 
 const logger = createLogger('CreateOptomAccount');
 const API_TOKEN = process.env.API_TOKENS
@@ -45,9 +46,9 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             id: 0, username: ""
         };
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        const apiUrl = process.env.API_BASE_URL;
         if (!apiUrl) {
-            throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
+            throw new Error("API_BASE_URL environment variable is not set");
         }
 
         let i = 1;
@@ -76,7 +77,7 @@ export const createOptomAccount = async (id: string, firstName: string, lastName
             };
 
             try {
-                const response = await fetch(`${apiUrl}/api/optometrists/createUser`, {
+                const response = await fetch1001OptometristApi(`${apiUrl}/api/optometrists/createUser`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

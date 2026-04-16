@@ -1,4 +1,7 @@
 import {createSecret} from "@/utils/crypto";
+import {createLogger} from "@/lib/logger";
+
+const logger = createLogger('IdentifierCount');
 
 const createIdentifier = (g: string, s: string) => g[0]+s[0]
 
@@ -8,12 +11,11 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
     const cacheKey = `${givenName}_${surname}`;
 
     if (identifierCountCache.has(cacheKey)) {
-        console.log(`Using cached identifier count for ${givenName} ${surname}`);
+        logger.debug("Using cached identifier count", { givenName, surname });
         return identifierCountCache.get(cacheKey);
     }
 
-    console.log(`=== Checking Identifier Count ===`);
-    console.log(`Given name: ${givenName}, Surname: ${surname}`);
+    logger.debug("Checking identifier count", { givenName, surname });
     
     try {
         if (!givenName || !surname) {
@@ -21,7 +23,6 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
         }
 
         const identifier = createIdentifier(givenName, surname);
-        console.log(`Generated identifier: ${identifier}`);
 
         const apiUrl = process.env.OPTOMATE_API_URL;
         if (!apiUrl) {
@@ -29,12 +30,11 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
         }
 
         const url = `${apiUrl}/Optometrists?$filter=contains(IDENTIFIER, '${identifier}')`;
-        console.log(`Checking identifier count at: ${url}`);
 
         const response = await fetch(url, {
             headers: {
                 'Content-Type': 'application/json',
-                "authorization": createSecret("1001_HO_JH", "10011001"),
+                "authorization": createSecret(process.env.OPTOMATE_USERNAME!, process.env.OPTOMATE_PASSWORD!),
             }
         });
 
@@ -45,11 +45,11 @@ export const checkIdentifierCount = async (givenName: string, surname: string) =
         const result = await response.json();
         const count = result?.value?.length ?? 0;
         
-        console.log(`Found ${count} existing identifiers starting with '${identifier}'`);
+        logger.debug("Identifier count result", { identifier, count });
         identifierCountCache.set(cacheKey, count);
         return count;
     } catch (error) {
-        console.error(`Error checking identifier count for ${givenName} ${surname}:`, error);
+        logger.error("Error checking identifier count", { givenName, surname, error });
         throw error;
     }
 }

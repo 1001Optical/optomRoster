@@ -6,6 +6,10 @@ import { getDateRange } from "@/utils/time";
 import { createSecret } from "@/utils/crypto";
 import { Shift } from "@/types/employment_hero_response";
 import { calculateSlots } from "@/utils/slots";
+import { createLogger } from "@/lib/logger";
+import { withAxiomFlush } from "@/lib/axiom/withFlush";
+
+const logger = createLogger('OptomCount');
 
 /**
  * 스토어별 Optom Roster 카운트와 실제 예약 개수, 점유율을 반환하는 API
@@ -29,6 +33,7 @@ export async function GET(
     >
   >
 > {
+  return withAxiomFlush(async () => {
   try {
     const db = await getDB();
 
@@ -75,8 +80,7 @@ export async function GET(
       );
     }
 
-    console.log(`[OPTOM COUNT] Processing ${dates.length} date(s): ${dates[0]} to ${dates[dates.length - 1]}`);
-    console.log(`[OPTOM COUNT] Fetching data from Employment Hero API (no DB read/write)`);
+    logger.debug("[OPTOM COUNT] Processing dates", { count: dates.length, from: dates[0], to: dates[dates.length - 1] });
 
     // Employment Hero API에서 직접 데이터 가져오기 (DB 저장 없음)
     const secret = process.env.EMPLOYMENTHERO_SECRET;
@@ -105,7 +109,7 @@ export async function GET(
     }
 
     const shifts: Shift[] = await response.json();
-    console.log(`[OPTOM COUNT] Received ${shifts.length} shifts from Employment Hero API`);
+    logger.debug("[OPTOM COUNT] Received shifts", { count: shifts.length });
 
     // Shift 데이터에서 필요한 정보만 추출 (startTime, endTime, locationId만 필요)
     // Employment Hero API에서 받은 시간을 그대로 사용 (타임존 변환 없음)
@@ -118,9 +122,7 @@ export async function GET(
         endTime: shift.endTime,
       }));
 
-    console.log(
-      `[OPTOM COUNT] Processed ${rosterRows.length} shifts (only time and location data)`
-    );
+    logger.debug("[OPTOM COUNT] Processed shifts", { count: rosterRows.length });
 
     // 스토어별로 슬롯 카운트 집계
     const storeSlotMap = new Map<
@@ -161,9 +163,7 @@ export async function GET(
       }
     });
 
-    console.log(
-      `[OPTOM COUNT] Finished calculating slot counts. Now fetching appointment counts from DB...`
-    );
+    logger.debug("[OPTOM COUNT] Slot counts calculated, fetching appointment counts");
 
     // 주별 모드: 날짜별 데이터 반환
     if (weekly) {
@@ -323,7 +323,7 @@ export async function GET(
       data: result,
     });
   } catch (error) {
-    console.error("[OPTOM COUNT] Error in optom-count API:", error);
+    logger.error("[OPTOM COUNT] Error in optom-count API", { error });
     return NextResponse.json(
       {
         message: "Internal server error",
@@ -332,4 +332,5 @@ export async function GET(
       { status: 500 }
     );
   }
+  });
 }

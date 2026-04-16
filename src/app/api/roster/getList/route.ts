@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import {I1001Response, I1001RosterData} from "@/types/api_response";
 import {dbAll, getDB} from "@/utils/db/db";
+import {createLogger} from "@/lib/logger";
+import { withAxiomFlush } from "@/lib/axiom/withFlush";
+
+const logger = createLogger('RosterGetList');
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<I1001RosterData[]>>>  {
+    return withAxiomFlush(async () => {
     try {
         const db = await getDB();
 
@@ -14,7 +19,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const locationIdsStr = searchParams.get("locationIds"); // 쉼표로 구분된 ID 목록
 
         if(!fromDate || !toDate) {
-            console.error("Missing required parameters: from and to dates");
+            logger.error("Missing required parameters: from and to dates");
             return NextResponse.json(
                 {
                     message: "Missing required parameters: from and to dates",
@@ -41,7 +46,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const toDateObj = new Date(toDateOnly);
 
         if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
-            console.error("Invalid date format provided");
+            logger.error("Invalid date format provided", { fromDate: fromDateOnly, toDate: toDateOnly });
             return NextResponse.json(
                 {
                     message: "Invalid date format provided",
@@ -81,7 +86,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                      WHERE startTime >= ?
                        AND endTime < ?`;
 
-        const params: any[] = [
+        const params: (string | number)[] = [
             `${fromDateOnly}T00:00:00Z`,
             `${toDateNextDayStr}T00:00:00Z`,
         ];
@@ -99,7 +104,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             data: result as I1001RosterData[]
         });
     } catch (error) {
-        console.error("Error in roster getList API:", error);
+        logger.error("Error in roster getList API", { error });
         return NextResponse.json(
             {
                 message: "Internal server error",
@@ -108,4 +113,5 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             { status: 500 }
         );
     }
+    });
 }

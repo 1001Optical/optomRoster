@@ -5,6 +5,10 @@ import {getEmploymentHeroList} from "@/lib/getEmploymentHeroList";
 import {SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {toLocalIsoNoOffset} from "@/utils/time";
 import {startOfDay, endOfDay, endOfMonth, addMonths, addWeeks, endOfWeek} from "date-fns";
+import {createLogger} from "@/lib/logger";
+import { withAxiomFlush } from "@/lib/axiom/withFlush";
+
+const logger = createLogger('RosterRefresh');
 
 interface RefreshResponse {
     data: optomData[];
@@ -13,6 +17,7 @@ interface RefreshResponse {
 }
 
 export async function GET(request: Request): Promise<NextResponse<I1001Response<RefreshResponse>>>  {
+    return withAxiomFlush(async () => {
     try {
         // 쿼리 파라미터 읽기
         const { searchParams } = new URL(request.url);
@@ -41,7 +46,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
                     toDate = toLocalIsoNoOffset(endOfMonth(addMonths(todayDate, 1)));
                     break;
                 default:
-                    console.error("[Error] Invalid range format. Supported values are: today, weekly, monthly");
+                    logger.error("Invalid range format", { range });
                     return NextResponse.json(
                         {
                             message: "Invalid range format. Supported values are: today, weekly, monthly",
@@ -51,7 +56,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             }
         }else{
             if(!fromDate || !toDate){
-                console.error("Missing required parameters: from and to dates OR range");
+                logger.error("Missing required parameters: from and to dates OR range");
                 return NextResponse.json(
                     {
                         message: "Missing required parameters: from and to dates OR range",
@@ -79,7 +84,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             normalizedFromDate = extractDateOnly(fromDate);
             normalizedToDate = extractDateOnly(toDate);
         } catch (error) {
-            console.error("Invalid date format provided:", error);
+            logger.error("Invalid date format provided", { error });
             return NextResponse.json(
                 {
                     message: "Invalid date format provided",
@@ -92,7 +97,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
         const toDateObj = new Date(normalizedToDate);
 
         if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
-            console.error("Invalid date format provided");
+            logger.error("Invalid date format provided", { fromDate: normalizedFromDate, toDate: normalizedToDate });
             return NextResponse.json(
                 {
                     message: "Invalid date format provided",
@@ -142,7 +147,7 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             { status: 200 }
         );
     } catch (error) {
-        console.error("Error in roster refresh API:", error);
+        logger.error("Error in roster refresh API", { error });
         return NextResponse.json(
             {
                 message: "Internal server error",
@@ -151,4 +156,5 @@ export async function GET(request: Request): Promise<NextResponse<I1001Response<
             { status: 500 }
         );
     }
+    });
 }

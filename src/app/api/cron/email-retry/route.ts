@@ -3,6 +3,7 @@ import { I1001Response } from "@/types/api_response";
 import { getDB, dbAll, dbExecute } from "@/utils/db/db";
 import { postEmail, PostEmailData } from "@/lib/postEmail";
 import { createLogger, maskEmail } from "@/lib/logger";
+import { withAxiomFlush } from "@/lib/axiom/withFlush";
 
 const logger = createLogger('EmailRetry');
 
@@ -35,6 +36,7 @@ interface RetryResult {
  * GET /api/cron/email-retry
  */
 export async function GET(): Promise<NextResponse<I1001Response<RetryResult>>> {
+    return withAxiomFlush(async () => {
     const result: RetryResult = { processed: 0, sent: 0, failed: 0, abandoned: 0 };
 
     try {
@@ -154,4 +156,5 @@ export async function GET(): Promise<NextResponse<I1001Response<RetryResult>>> {
             { status: 500 }
         );
     }
+    });
 }

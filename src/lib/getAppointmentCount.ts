@@ -166,7 +166,7 @@ export async function getAppointmentCount(
     const response = await fetch(url, {
       headers: {
         "Content-Type": "application/json",
-        authorization: createSecret("1001_HO_JH", "10011001"),
+        authorization: createSecret(process.env.OPTOMATE_USERNAME!, process.env.OPTOMATE_PASSWORD!),
       },
     });
 

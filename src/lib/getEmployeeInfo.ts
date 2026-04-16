@@ -1,5 +1,7 @@
 import {createSecret} from "@/utils/crypto";
+import { createLogger } from "@/lib/logger";
 
+const logger = createLogger('EmployeeInfo');
 const secret = process.env.EMPLOYMENTHERO_SECRET
 
 export interface EmployeeInfo {
@@ -11,10 +13,10 @@ export interface EmployeeInfo {
 
 export const getEmployeeInfo = async (id: number, retryCount = 0): Promise<EmployeeInfo> => {
     const MAX_RETRIES = 3;
-    const RETRY_DELAY = 1000 * (retryCount + 1); // Exponential backoff: 1s, 2s, 3s
+    const RETRY_DELAY = 1000 * (retryCount + 1);
 
     if (retryCount === 0) {
-        console.log(`  🔍 [EMPLOYEE INFO] Fetching info for employee ID: ${id}`);
+        logger.debug(`Fetching info`, { employeeId: id });
     }
 
     try {
@@ -32,9 +34,6 @@ export const getEmployeeInfo = async (id: number, retryCount = 0): Promise<Emplo
         }
 
         const url = `${apiUrl}/employee/unstructured/${id}`;
-        if (retryCount === 0) {
-            console.log(`     └─ URL: ${url}`);
-        }
 
         const response = await fetch(url, {
             headers: {
@@ -42,35 +41,28 @@ export const getEmployeeInfo = async (id: number, retryCount = 0): Promise<Emplo
             }
         });
 
-        // 429 Rate Limit 에러 시 재시도
         if (response.status === 429 && retryCount < MAX_RETRIES) {
-            console.warn(`     └─ ⚠️  Rate limit hit, retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+            logger.warn(`Rate limit hit, retrying`, { employeeId: id, delay: RETRY_DELAY, attempt: retryCount + 1, maxRetries: MAX_RETRIES });
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             return getEmployeeInfo(id, retryCount + 1);
         }
 
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`     └─ ❌ Request failed: ${response.status} ${response.statusText}`);
-            if (errorText) {
-                console.error(`     └─ Error response:`, errorText);
-            }
+            logger.error(`Request failed`, { employeeId: id, status: response.status, statusText: response.statusText });
             throw new Error(`Employee info API request failed: ${response.status} ${response.statusText}`);
         }
 
         const employeeInfo = await response.json();
-        console.log(`     └─ ✅ Retrieved - Email: ${employeeInfo?.emailAddress ? 'Yes' : 'No'}, Name: ${employeeInfo?.name ? 'Yes' : 'No'}`);
+        logger.debug(`Retrieved`, { employeeId: id, hasEmail: !!employeeInfo?.emailAddress, hasName: !!employeeInfo?.name });
 
         return employeeInfo;
     } catch (error) {
-        // 최대 재시도 횟수 초과 시 에러 throw
         if (retryCount >= MAX_RETRIES) {
-            console.error(`     └─ ❌ Failed after ${MAX_RETRIES} retries:`, error);
+            logger.error(`Failed after retries`, { employeeId: id, retries: MAX_RETRIES, error: String(error) });
             throw error;
         }
-        // 네트워크 에러 등은 재시도
         if (error instanceof Error && !error.message.includes('Invalid') && !error.message.includes('not set')) {
-            console.warn(`     └─ ⚠️  Retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+            logger.warn(`Retrying`, { employeeId: id, attempt: retryCount + 1, maxRetries: MAX_RETRIES });
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             return getEmployeeInfo(id, retryCount + 1);
         }

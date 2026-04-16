@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { I1001Response } from "@/types/api_response";
 import { deletePastDataForAllBranches } from "@/lib/syncRoster";
+import { createLogger } from "@/lib/logger";
+import { withAxiomFlush } from "@/lib/axiom/withFlush";
+
+const logger = createLogger('CleanupPastData');
 
 /**
  * 오늘 이전의 모든 데이터를 모든 브랜치에서 삭제하는 API
@@ -11,6 +15,7 @@ import { deletePastDataForAllBranches } from "@/lib/syncRoster";
 export async function GET(
     request: Request
 ): Promise<NextResponse<I1001Response<{ deleted: number }>>> {
+    return withAxiomFlush(async () => {
     try {
         const deletedCount = await deletePastDataForAllBranches();
         
@@ -21,7 +26,7 @@ export async function GET(
             }
         });
     } catch (error) {
-        console.error("Error in cleanup past data API:", error);
+        logger.error("Error in cleanup past data API", { error });
         return NextResponse.json(
             {
                 message: "Internal server error",
@@ -30,4 +35,5 @@ export async function GET(
             { status: 500 }
         );
     }
+    });
 }

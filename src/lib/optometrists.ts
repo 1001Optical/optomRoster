@@ -1,4 +1,4 @@
-import {apiFetch} from "@/services/apiFetch";
+import { apiFetch, fetch1001OptometristApi } from "@/services/apiFetch";
 import { createLogger, maskEmail, maskName } from "@/lib/logger";
 
 const logger = createLogger('Optometrists');
@@ -11,7 +11,7 @@ type SearchOptomIdType = (firstName: string, lastName: string, email?: string, e
 
 interface SearchResult {
     optomId: number;
-    fristName: string;
+    firstName: string;
     lastName: string;
     identifier: string;
     workHistory: string[];
@@ -45,12 +45,12 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
     } else if (cached && isExpired(cached)) {
         optomCache.delete(cacheKey);
     }
-    const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const apiUrl = process.env.API_BASE_URL;
 
     const updateOptometrist = async (optomId: number, payload: { externalUserId?: string; email?: string }) => {
         try {
             if (!apiUrl) {
-                throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
+                throw new Error("API_BASE_URL environment variable is not set");
             }
             const maskedPayload = {
                 externalUserId: payload.externalUserId,
@@ -79,7 +79,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
     const search = async (path: string, body: Record<string, unknown>) => {
         try {
-            const response = await fetch(`${apiUrl}${path}`, {
+            const response = await fetch1001OptometristApi(`${apiUrl}${path}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -89,7 +89,6 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             });
             const responseText = await response.text();
             logger.debug(responseText);
-            // if (!response.ok) return null;
             return responseText ? JSON.parse(responseText) : null;
         } catch (e) {
             return null;
@@ -99,7 +98,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
     try {
         if (!apiUrl) {
-            throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
+            throw new Error("API_BASE_URL environment variable is not set");
         }
 
         const setAndReturn = (data: SearchResult) => {
@@ -125,8 +124,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             lastName: safeLastName || null
         })
 
-        logger.debug(`Searching `, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, email: maskEmail(email ?? "none"), externalId: externalId });
-        console.log(result)
+        logger.debug(`Searching`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, email: maskEmail(email ?? "none"), externalId: externalId });
 
         if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
@@ -149,9 +147,9 @@ export const addWorkHistory: AddWorkHistory = async (id, branch) => {
             throw new Error("id, branch is required");
         }
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        const apiUrl = process.env.API_BASE_URL;
         if (!apiUrl) {
-            throw new Error("NEXT_PUBLIC_API_BASE_URL environment variable is not set");
+            throw new Error("API_BASE_URL environment variable is not set");
         }
 
         const url = `${apiUrl}/api/optometrists/optomWorkHistory`;

@@ -1,6 +1,6 @@
 import {apiFetch} from "@/services/apiFetch";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+const apiUrl = process.env.API_BASE_URL;
 const API_TOKEN = process.env.API_TOKENS
 
 interface IAdjustData {
