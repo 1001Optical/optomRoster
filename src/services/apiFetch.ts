@@ -20,6 +20,23 @@ function minGapMs(): number {
   return 400;
 }
 
+/** 분당 요청 상한(기본 55). 60/분 제한 대비 여유. `API_1001_MAX_PER_MINUTE`로 조정. */
+function max1001RequestsPerMinute(): number {
+  const raw = process.env.API_1001_MAX_PER_MINUTE;
+  if (raw !== undefined && raw !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1 && n <= 120) return Math.floor(n);
+  }
+  return 55;
+}
+
+/** 직렬 큐에서 요청 사이 최소 대기: 사용자 간격과 분당 상한 중 더 보수적인 값 */
+function enforcedMinGapMs(): number {
+  const userGap = minGapMs();
+  const fromRateCap = Math.ceil(60_000 / max1001RequestsPerMinute());
+  return Math.max(userGap, fromRateCap);
+}
+
 function backoffMsFor429(res: Response, attempt: number): number {
   const ra = res.headers.get("Retry-After");
   if (ra) {
@@ -56,7 +73,7 @@ async function runSerialized1001<T>(path: string, work: () => Promise<T>): Promi
     return work();
   }
 
-  const gap = minGapMs();
+  const gap = enforcedMinGapMs();
   const run = queueTail.then(async () => {
     const wait = Math.max(0, lastRequestFinishedAt + gap - Date.now());
     if (wait > 0) {

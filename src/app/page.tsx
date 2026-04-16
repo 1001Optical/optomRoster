@@ -3,7 +3,7 @@
 import Table from "@/components/table";
 import {useEffect, useState} from "react";
 import {I1001TableType} from "@/types/api_response";
-import {getList, refresh} from "@/utils/fetch_utils";
+import { getList, refresh, getChangeLogPendingCount } from "@/utils/fetch_utils";
 import IooICalendar from "@/components/IooICalendar";
 import { DateRange } from "react-day-picker";
 import { RiRefreshLine } from "react-icons/ri";
@@ -45,10 +45,13 @@ export default function Home() {
     const [appointmentConflicts, setAppointmentConflicts] = useState<AppointmentConflict[]>([]);
     const [rangeType] = useState<"weekly" | "monthly">("weekly")
     const [selectedWeek, setSelectedWeek] = useState<DateRange | undefined>(getCurrentWeekRange())
+    const [pendingChangeLogCount, setPendingChangeLogCount] = useState(0);
 
     useEffect(() => {
         setLoading(true);
         setError(null);
+
+        void getChangeLogPendingCount().then(setPendingChangeLogCount);
 
         getList(selectedWeek?.from, selectedWeek?.to, selectOption)
             .then(res => {
@@ -81,7 +84,17 @@ export default function Home() {
     <div className="mx-auto py-8 px-4 w-screen h-screen flex flex-col justify-center items-center">
       <div className="w-[1240px] h-full overflow-scroll flex flex-col gap-4">
         <div className="w-full flex justify-between items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Roster</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Roster</h1>
+            {pendingChangeLogCount > 0 && (
+              <span
+                className="text-xs font-medium px-2 py-1 rounded-md bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100 border border-amber-200 dark:border-amber-700"
+                title="Optomate(1001 API) 반영 대기 중인 변경입니다. 새로고침 또는 매시 크론에서 재시도됩니다."
+              >
+                Optomate Pending: {pendingChangeLogCount}건
+              </span>
+            )}
+          </div>
 
           <div className="flex justify-end gap-3">
             <IooISelect
@@ -138,6 +151,7 @@ export default function Home() {
                         console.error("Error during manual refresh:", err);
                         setError(err instanceof Error ? err.message : "Refresh failed");
                     } finally {
+                        void getChangeLogPendingCount().then(setPendingChangeLogCount);
                         setLoading(false);
                     }
                 }}

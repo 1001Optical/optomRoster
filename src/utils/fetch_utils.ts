@@ -188,5 +188,21 @@ const getOptomCountByRange = async (from: string, to: string, weekly: boolean = 
     }
 }
 
-export {refresh, getList, refreshManual, getOptomCount, getOptomCountByRange}
-export type {OptomCountResult}
+const getChangeLogPendingCount = async (): Promise<number> => {
+    try {
+        const res = await fetch("/api/roster/change-log-pending-count", {
+            method: "GET",
+        });
+        if (!res.ok) {
+            return 0;
+        }
+        const result = await res.json();
+        const count = result?.data?.count;
+        return typeof count === "number" ? count : 0;
+    } catch {
+        return 0;
+    }
+};
+
+export { refresh, getList, refreshManual, getOptomCount, getOptomCountByRange, getChangeLogPendingCount };
+export type { OptomCountResult };

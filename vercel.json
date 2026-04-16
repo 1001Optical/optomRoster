@@ -9,6 +9,9 @@
     "path": "/api/cron/email-retry",
     "schedule": "*/10 * * * *"
   }, {
+    "path": "/api/cron/replay-change-log",
+    "schedule": "0 * * * *"
+  }, {
     "path": "/api/cron/store-sync?store=BKT",
     "schedule": "0 18 * * *"
   }, {
