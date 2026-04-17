@@ -11,7 +11,6 @@ import type { Client } from "@libsql/client";
 import {PostAppAdjust, PostAppAdjustSwapOptom} from "@/lib/appointment";
 import { createLogger, maskName } from "@/lib/logger";
 import type { SlotMismatch, AppointmentConflict } from "@/lib/changeProcessor";
-import { computeSlotMismatchForNew } from "@/lib/slotService";
 import type { OptomContext } from "@/lib/slotService";
 
 export type { OptomContext };
@@ -155,10 +154,9 @@ export async function finalizeOptomAdjust(
     context: OptomContext,
     optomData: optomData,
     db: Client,
-    OptomateApiUrl: string,
     key: string,
     appAdjust: AppAdjustData,
-    options?: { sendAdjust?: boolean; skipSlotMismatch?: boolean; appAdjustSuccessOverride?: boolean; }
+    options?: { sendAdjust?: boolean }
 ): Promise<ProcessOptomResult> {
     let appAdjustSuccess = false;
     if (options?.sendAdjust !== false) {
@@ -168,13 +166,6 @@ export async function finalizeOptomAdjust(
             const err = response.error instanceof Error ? response.error.message : String(response.error);
             logger.warn(`APP_ADJUST failed but continuing`, { error: err });
         }
-    }
-
-    const effectiveAdjustSuccess = options?.appAdjustSuccessOverride ?? appAdjustSuccess;
-
-    let slotMismatch: SlotMismatch | undefined = undefined;
-    if (key === "new" && !options?.skipSlotMismatch) {
-        slotMismatch = await computeSlotMismatchForNew(context, optomData, OptomateApiUrl, effectiveAdjustSuccess);
     }
 
     let emailData = null;
@@ -216,7 +207,7 @@ export async function finalizeOptomAdjust(
         optomId: context.optomId,
         summary,
         workFirst: context.workFirst,
-        slotMismatch,
+        slotMismatch: undefined,
         appointmentConflict: undefined
     };
 }
@@ -268,8 +259,7 @@ export function isSwapOptomChange(diffSummary: { old?: optomData; new?: optomDat
 export async function processOptomSwap(
     oldData: optomData,
     newData: optomData,
-    db: Client,
-    OptomateApiUrl: string
+    db: Client
 ): Promise<ProcessOptomResult[]> {
     const oldContext = await resolveOptomContext(oldData);
     const newContext = await resolveOptomContext(newData);
@@ -301,20 +291,18 @@ export async function processOptomSwap(
         oldContext,
         oldData,
         db,
-        OptomateApiUrl,
         "old",
         oldSwapAdjust,
-        { sendAdjust: false, skipSlotMismatch: true }
+        { sendAdjust: false }
     );
 
     const newResult = await finalizeOptomAdjust(
         newContext,
         newData,
         db,
-        OptomateApiUrl,
         "new",
         newSwapAdjust,
-        { sendAdjust: false, appAdjustSuccessOverride: swapSuccess }
+        { sendAdjust: false }
     );
 
     return [oldResult, newResult];
@@ -322,8 +310,7 @@ export async function processOptomSwap(
 
 export async function processSwapWithoutNew(
     oldData: optomData,
-    db: Client,
-    OptomateApiUrl: string
+    db: Client
 ): Promise<ProcessOptomResult> {
     const context = await resolveOptomContext(oldData);
     const adjust = buildAppAdjust(context, false, false);
@@ -345,17 +332,15 @@ export async function processSwapWithoutNew(
         context,
         oldData,
         db,
-        OptomateApiUrl,
         "new",
         adjust,
-        { sendAdjust: false, appAdjustSuccessOverride: swapSuccess }
+        { sendAdjust: false }
     );
 }
 
 export async function processOptomData(
     optomData: optomData,
     db: Client,
-    OptomateApiUrl: string,
     key: string
 ): Promise<ProcessOptomResult> {
     const context = await resolveOptomContext(optomData);
@@ -371,7 +356,6 @@ export async function processOptomData(
         context,
         optomData,
         db,
-        OptomateApiUrl,
         key,
         appAdjust,
         { sendAdjust: true }

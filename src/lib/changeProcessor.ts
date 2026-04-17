@@ -3,7 +3,6 @@ import {ChangeLog, optomData} from "@/types/types";
 import type { PostEmailData } from "@/lib/postEmail";
 import {chunk} from "@/lib/utils";
 import { createLogger, maskName } from "@/lib/logger";
-import { getBranchTotalSlots } from "@/lib/slotService";
 import {
     processOptomData,
     processOptomSwap,
@@ -139,11 +138,6 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
     }
 
     const db = await getDB();
-    const OptomateApiUrl = process.env.OPTOMATE_API_URL;
-
-    if (!OptomateApiUrl) {
-        throw new Error("OPTOMATE_API_URL environment variable is not set");
-    }
 
     const summaries: ProcessedSummary[] = [];
     const mismatches: SlotMismatch[] = [];
@@ -154,7 +148,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         if (diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId) {
             logger.info(`Processing deleted roster`, { name: `${maskName(diffSummary.old.firstName)} ${maskName(diffSummary.old.lastName)}` });
             try {
-                const result = await processOptomData(diffSummary.old, db, OptomateApiUrl, "deleted");
+                const result = await processOptomData(diffSummary.old, db, "deleted");
                 if (result.summary) {
                     summaries.push(result.summary);
                 }
@@ -172,7 +166,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                 newName: `${maskName(diffSummary.new.firstName)} ${maskName(diffSummary.new.lastName)}`
             });
             try {
-                const swapResults = await processOptomSwap(diffSummary.old, diffSummary.new, db, OptomateApiUrl);
+                const swapResults = await processOptomSwap(diffSummary.old, diffSummary.new, db);
                 swapResults.forEach((result, index) => {
                     const label = index === 0 ? "old" : "new";
                     handleProcessResult(result, `swap:${label}`, summaries, mismatches, conflicts, locumResults);
@@ -187,7 +181,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
 
             if (hasOldValid && !hasNewValid && diffSummary.old) {
                 try {
-                    const result = await processSwapWithoutNew(diffSummary.old, db, OptomateApiUrl);
+                    const result = await processSwapWithoutNew(diffSummary.old, db);
                     handleProcessResult(result, "change:old-only", summaries, mismatches, conflicts, locumResults);
                 } catch (error) {
                     logger.error(`Failed to process old-only roster change`, { error: String(error) });
@@ -207,7 +201,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                 const {data, key} = dataToProcess[i];
 
                 try {
-                    const result = await processOptomData(data, db, OptomateApiUrl, key);
+                    const result = await processOptomData(data, db, key);
                     handleProcessResult(result, `change:${key}`, summaries, mismatches, conflicts, locumResults);
 
                     if (i < dataToProcess.length - 1) {
@@ -224,7 +218,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
     } else if (changeLog.changeType === 'roster_inserted') {
         if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
             try {
-                const result = await processOptomData(diffSummary.new, db, OptomateApiUrl, "new");
+                const result = await processOptomData(diffSummary.new, db, "new");
                 handleProcessResult(result, "insert:new", summaries, mismatches, conflicts, locumResults);
             } catch (error) {
                 logger.error(`Failed to process inserted roster`, { error: String(error) });
@@ -237,7 +231,4 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
     return { summaries, mismatches, conflicts };
 }
 
-export {
-    callOptomateAPI,
-    getBranchTotalSlots,
-};
+export { callOptomateAPI };
