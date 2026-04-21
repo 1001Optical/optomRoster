@@ -45,6 +45,14 @@ async function resolveAccountForOptom(optomData: optomData): Promise<{
     const key = accountResolutionKey(optomData);
     let inflight = pendingAccountResolution.get(key);
     if (inflight) {
+        logger.info(`Account resolution coalesced`, {
+            accountKeyType: key.startsWith("ext:")
+                ? "employeeId"
+                : key.startsWith("ehid:")
+                  ? "ehRosterId"
+                  : "nameEmail",
+            accountKey: key.startsWith("n:") ? undefined : key,
+        });
         return inflight;
     }
 
@@ -315,9 +323,11 @@ export function handleProcessResult(
         if (result.isLocum && result.emailData && result.workFirst) {
             const dedupeKey = locumEmailDedupeKey(result);
             if (dedupeKey && locumEmailDedupeKeys?.has(dedupeKey)) {
-                logger.debug(
-                    `[LOCUM EMAIL] dedupe skip context=${context} key=${dedupeKey.slice(0, 80)}...`,
-                );
+                logger.info(`Locum email deduped (skipped duplicate queue)`, {
+                    context,
+                    rosterDate: result.emailData.rosterDate,
+                    storeName: result.emailData.storeName,
+                });
             } else {
                 if (dedupeKey) locumEmailDedupeKeys?.add(dedupeKey);
                 locumResults.push({
