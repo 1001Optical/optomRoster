@@ -146,13 +146,33 @@ function writeToConsole(level: LogLevel, message: string, ctx?: Record<string, u
   method(`${prefix} ${message}`);
 }
 
+const AXIOM_STACK_MAX = 8000;
+
+/** Axiom에서 컬럼으로 잡히게 `error` 객체를 평탄 문자열 필드로 풀어줌 */
+function flattenForAxiom(fields?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!fields || Object.keys(fields).length === 0) return fields;
+
+  const out: Record<string, unknown> = { ...fields };
+  const err = out.error;
+  if (err && typeof err === "object" && err !== null && !Array.isArray(err)) {
+    const e = err as Record<string, unknown>;
+    if (typeof e.message === "string") out.errorMessage = e.message;
+    if (typeof e.name === "string") out.errorName = e.name;
+    if (typeof e.stack === "string") {
+      out.errorStack = e.stack.slice(0, AXIOM_STACK_MAX);
+    }
+    delete out.error;
+  }
+  return out;
+}
+
 function sendToAxiom(
   level: LogLevel,
   message: string,
   fields?: Record<string, unknown>,
 ) {
   if (!axiomLogger || !shouldAxiomLog(level)) return;
-  axiomLogger[level](message, fields);
+  axiomLogger[level](message, flattenForAxiom(fields));
 }
 
 export function initConsoleAxiomBridge() {

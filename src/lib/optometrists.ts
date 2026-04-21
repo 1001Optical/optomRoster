@@ -137,6 +137,26 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
     }
 }
 
+/** 신규 계정 생성 직후 캐시에 "없음"이 남지 않도록 무효화 (병렬 처리 시 재검색용) */
+export function invalidateOptomSearchCacheFor(optomData: {
+    employeeId?: number | null;
+    id?: number | null;
+    firstName: string;
+    lastName: string;
+    email?: string | null;
+}) {
+    const { employeeId, id, firstName, lastName, email } = optomData;
+    if (employeeId != null && String(employeeId).trim() !== "") {
+        optomCache.delete(`ext:${String(employeeId)}`);
+    }
+    if (id != null && String(id).trim() !== "") {
+        optomCache.delete(`ext:${String(id)}`);
+    }
+    const safeFirstName = sanitizeName(firstName);
+    const safeLastName = sanitizeName(lastName);
+    optomCache.delete(`${safeFirstName}_${safeLastName}_${email ?? ""}`);
+}
+
 type AddWorkHistory = (id: number, branch: string) => Promise<boolean>;
 
 export const addWorkHistory: AddWorkHistory = async (id, branch) => {

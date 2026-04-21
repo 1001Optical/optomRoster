@@ -1,8 +1,5 @@
 {
   "crons": [{
-    "path": "/api/cron/low-stock",
-    "schedule": "0 21 * * 3"
-  }, {
     "path": "/api/roster/cleanup-past-data",
     "schedule": "55 17 * * *"
   }, {

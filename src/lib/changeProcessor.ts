@@ -59,6 +59,9 @@ export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promis
         return { slotMismatches: [], appointmentConflicts: [] };
     }
 
+    /** 한 번의 플러시에서 동일 로컴 환영 메일이 여러 CHANGE_LOG로 중복 큐잉되지 않도록 */
+    const locumEmailDedupeKeys = new Set<string>();
+
     const BATCH_SIZE = 8;
     const batches = chunk(result, BATCH_SIZE);
     const successIds: number[] = [];
@@ -72,7 +75,7 @@ export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promis
         const batchPromises = batch.map(async (changeLog) => {
             try {
                 const diffSummary = changeLog.diffSummary ? JSON.parse(changeLog.diffSummary) : null;
-                const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary);
+                const { summaries, mismatches, conflicts } = await callOptomateAPI(changeLog, diffSummary, locumEmailDedupeKeys);
                 const hasRealConflicts = conflicts?.some(c => !c.isApiError) ?? false;
                 return { id: changeLog.id, success: !hasRealConflicts, summaries, mismatches, conflicts };
             } catch (error) {
@@ -130,7 +133,7 @@ export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promis
     return { slotMismatches, appointmentConflicts };
 }
 
-async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomData, new?: optomData}): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
+async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomData, new?: optomData}, locumEmailDedupeKeys: Set<string>): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
     logger.info(`Processing change log`, { changeType: changeLog.changeType, rosterId: changeLog.rosterId });
 
     if(!diffSummary) {
@@ -169,7 +172,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
                 const swapResults = await processOptomSwap(diffSummary.old, diffSummary.new, db);
                 swapResults.forEach((result, index) => {
                     const label = index === 0 ? "old" : "new";
-                    handleProcessResult(result, `swap:${label}`, summaries, mismatches, conflicts, locumResults);
+                    handleProcessResult(result, `swap:${label}`, summaries, mismatches, conflicts, locumResults, locumEmailDedupeKeys);
                 });
             } catch (error) {
                 logger.error(`Failed to process swap roster`, { error: String(error) });
@@ -182,7 +185,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
             if (hasOldValid && !hasNewValid && diffSummary.old) {
                 try {
                     const result = await processSwapWithoutNew(diffSummary.old, db);
-                    handleProcessResult(result, "change:old-only", summaries, mismatches, conflicts, locumResults);
+                    handleProcessResult(result, "change:old-only", summaries, mismatches, conflicts, locumResults, locumEmailDedupeKeys);
                 } catch (error) {
                     logger.error(`Failed to process old-only roster change`, { error: String(error) });
                 }
@@ -202,7 +205,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
 
                 try {
                     const result = await processOptomData(data, db, key);
-                    handleProcessResult(result, `change:${key}`, summaries, mismatches, conflicts, locumResults);
+                    handleProcessResult(result, `change:${key}`, summaries, mismatches, conflicts, locumResults, locumEmailDedupeKeys);
 
                     if (i < dataToProcess.length - 1) {
                         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -219,7 +222,7 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
         if (diffSummary.new && diffSummary.new.firstName && diffSummary.new.lastName && diffSummary.new.employeeId) {
             try {
                 const result = await processOptomData(diffSummary.new, db, "new");
-                handleProcessResult(result, "insert:new", summaries, mismatches, conflicts, locumResults);
+                handleProcessResult(result, "insert:new", summaries, mismatches, conflicts, locumResults, locumEmailDedupeKeys);
             } catch (error) {
                 logger.error(`Failed to process inserted roster`, { error: String(error) });
             }

@@ -2,6 +2,18 @@ import { Axiom } from "@axiomhq/js";
 import { Logger, AxiomJSTransport, LogLevel } from "@axiomhq/logging";
 import { nextJsFormatters } from "@axiomhq/nextjs";
 
+/**
+ * `nextJsFormatters`는 요청마다 proxy.userAgent, host, path 등 Vercel 메타를 붙여
+ * Axiom Stream에서 한 줄이 거대해질 수 있음. 기본은 끔.
+ * 예전처럼 붙이려면 `AXIOM_NEXTJS_FORMATTERS=true`
+ */
+function getAxiomFormatters() {
+  if (process.env.AXIOM_NEXTJS_FORMATTERS === "true") {
+    return nextJsFormatters;
+  }
+  return [];
+}
+
 const AXIOM_TOKEN =
   process.env.AXIOM_TOKEN ?? process.env.NEXT_PUBLIC_AXIOM_TOKEN;
 const AXIOM_DATASET =
@@ -31,7 +43,7 @@ export const axiomLogger = isAxiomConfigured
           dataset: AXIOM_DATASET!,
         }),
       ],
-      formatters: nextJsFormatters,
+      formatters: getAxiomFormatters(),
       args: {
         app: "optomRoster",
         environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",

@@ -10,6 +10,10 @@ import { withAxiomFlush } from "@/lib/axiom/withFlush";
 
 const logger = createLogger('RosterRefresh');
 
+/** EH + Optomate for 56-day window can exceed default serverless limits (cron / scripts). */
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 interface RefreshResponse {
     data: optomData[];
     slotMismatches: SlotMismatch[];

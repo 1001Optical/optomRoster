@@ -1,7 +1,7 @@
 import {dbGet} from "@/utils/db/db";
 import {optomData} from "@/types/types";
 import {formatHm, setTimeZone} from "@/utils/time";
-import {addWorkHistory, searchOptomId} from "@/lib/optometrists";
+import {addWorkHistory, invalidateOptomSearchCacheFor, searchOptomId} from "@/lib/optometrists";
 import type { PostEmailData } from "@/lib/postEmail";
 import { queueEmail } from "@/lib/postEmail";
 import {OptomMap} from "@/data/stores";
@@ -16,6 +16,110 @@ import type { OptomContext } from "@/lib/slotService";
 export type { OptomContext };
 
 const logger = createLogger('RosterAdjust');
+
+/** 동일 인물에 대한 병렬 CHANGE_LOG 처리 시 계정 생성이 한 번만 일어나도록 */
+const pendingAccountResolution = new Map<
+    string,
+    Promise<{ id: number; username?: string; isFirst: boolean; workHistory: string[] }>
+>();
+
+function accountResolutionKey(optomData: optomData): string {
+    if (optomData.employeeId != null && String(optomData.employeeId).trim() !== "") {
+        return `ext:${String(optomData.employeeId)}`;
+    }
+    if (optomData.id != null && String(optomData.id).trim() !== "") {
+        return `ehid:${String(optomData.id)}`;
+    }
+    const em = (optomData.email ?? "").toLowerCase().trim();
+    const fn = (optomData.firstName ?? "").replace(/[^a-zA-Z0-9 ]/g, "").trim();
+    const ln = (optomData.lastName ?? "").replace(/[^a-zA-Z0-9 ]/g, "").trim();
+    return `n:${fn}|${ln}|${em}`;
+}
+
+async function resolveAccountForOptom(optomData: optomData): Promise<{
+    id: number;
+    username?: string;
+    isFirst: boolean;
+    workHistory: string[];
+}> {
+    const key = accountResolutionKey(optomData);
+    let inflight = pendingAccountResolution.get(key);
+    if (inflight) {
+        return inflight;
+    }
+
+    const extForSearch = optomData.employeeId ? optomData.employeeId.toString() : undefined;
+    const email = optomData.email;
+
+    const safeTrySearch = async (): Promise<{ id: number; workHistory: string[] } | null> => {
+        try {
+            const r = await searchOptomId(optomData.firstName, optomData.lastName, email, extForSearch);
+            return r ? { id: r.id, workHistory: r.workHistory ?? [] } : null;
+        } catch (searchError) {
+            logger.warn(`Search failed, will attempt to create account`, {
+                name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`,
+                error: String(searchError),
+            });
+            return null;
+        }
+    };
+
+    inflight = new Promise((resolve, reject) => {
+        void (async () => {
+            try {
+                let hit = await safeTrySearch();
+                if (hit) {
+                    resolve({
+                        id: hit.id,
+                        username: undefined,
+                        isFirst: false,
+                        workHistory: hit.workHistory,
+                    });
+                    return;
+                }
+
+                const extId = optomData.id ?? optomData.employeeId;
+                if (!extId) {
+                    throw new Error(
+                        `Cannot create account: both id and employeeId are missing for ${optomData.firstName} ${optomData.lastName}`,
+                    );
+                }
+
+                logger.info(`Creating new account`, {
+                    name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`,
+                    externalId: extId,
+                });
+                const info = await createOptomAccount(
+                    extId.toString(),
+                    optomData.firstName,
+                    optomData.lastName,
+                    email,
+                );
+                invalidateOptomSearchCacheFor({
+                    employeeId: optomData.employeeId ?? undefined,
+                    id: optomData.id ?? undefined,
+                    firstName: optomData.firstName,
+                    lastName: optomData.lastName,
+                    email,
+                });
+                hit = await safeTrySearch();
+                resolve({
+                    id: info.id,
+                    username: info.username,
+                    isFirst: true,
+                    workHistory: hit?.workHistory ?? [],
+                });
+            } catch (e) {
+                reject(e);
+            } finally {
+                pendingAccountResolution.delete(key);
+            }
+        })();
+    });
+
+    pendingAccountResolution.set(key, inflight);
+    return inflight;
+}
 
 export interface ProcessedSummary {
     name: string;
@@ -66,40 +170,8 @@ export function logLocumEmailSkip(
 }
 
 export async function resolveOptomContext(optomData: optomData): Promise<OptomContext> {
-    let isFirst = false;
-    let username = undefined;
-    const email = optomData.email;
-    const externalId = optomData.employeeId ? optomData.employeeId.toString() : undefined;
-
-    let optomInfo: { id: number; workHistory: string[] } | undefined = undefined;
-    try {
-        optomInfo = await searchOptomId(optomData.firstName, optomData.lastName, email, externalId);
-    } catch (searchError) {
-        logger.warn(`Search failed, will attempt to create account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, error: String(searchError) });
-    }
-
-    let id = optomInfo?.id;
-
-    logger.debug(`Resolved optomId`, { optomId: id });
-
-    if (!id) {
-        try {
-            const externalId = optomData.id ?? optomData.employeeId;
-            if (!externalId) {
-                throw new Error(`Cannot create account: both id and employeeId are missing for ${optomData.firstName} ${optomData.lastName}`);
-            }
-
-            logger.info(`Creating new account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, externalId });
-            const info = await createOptomAccount(externalId.toString(), optomData.firstName, optomData.lastName, email);
-            id = info.id;
-            username = info.username;
-            isFirst = true;
-            logger.info(`Account created`, { optomId: id, username });
-        } catch (accountError) {
-            logger.error(`Failed to create account`, { name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`, error: String(accountError) });
-            throw accountError;
-        }
-    }
+    const account = await resolveAccountForOptom(optomData);
+    logger.debug(`Resolved optomId`, { optomId: account.id });
 
     if (!optomData.startTime || !optomData.endTime) {
         throw new Error("Missing startTime or endTime");
@@ -115,7 +187,7 @@ export async function resolveOptomContext(optomData: optomData): Promise<OptomCo
         throw new Error(`Unknown locationId: ${optomData.locationId}`);
     }
 
-    const workFirst = !optomInfo?.workHistory?.includes(branchInfo.OptCode);
+    const workFirst = !account.workHistory.includes(branchInfo.OptCode);
 
     const startDate = new Date(optomData.startTime);
     const endDate = new Date(optomData.endTime);
@@ -123,9 +195,9 @@ export async function resolveOptomContext(optomData: optomData): Promise<OptomCo
     const employmentHeroSlots = workMinutes > 0 ? calculateSlots(workMinutes) : 0;
 
     return {
-        optomId: id!,
-        isFirst,
-        username,
+        optomId: account.id,
+        isFirst: account.isFirst,
+        username: account.username,
         branchInfo,
         date,
         adjustStart: formatHm(start),
@@ -212,13 +284,28 @@ export async function finalizeOptomAdjust(
     };
 }
 
+function locumEmailDedupeKey(result: ProcessOptomResult): string | null {
+    if (!result.emailData || result.optomId == null || !result.workHistory) return null;
+    const e = result.emailData;
+    return [
+        result.optomId,
+        result.workHistory,
+        e.email.toLowerCase().trim(),
+        e.rosterDate,
+        e.rosterStart,
+        e.rosterEnd,
+        e.storeName,
+    ].join("|");
+}
+
 export function handleProcessResult(
     result: ProcessOptomResult,
     context: string,
     summaries: ProcessedSummary[],
     mismatches: SlotMismatch[],
     conflicts: AppointmentConflict[],
-    locumResults: {emailData?: PostEmailData | null, isFirst?: boolean, optomId?: number, workHistory?: string}[]
+    locumResults: {emailData?: PostEmailData | null, isFirst?: boolean, optomId?: number, workHistory?: string}[],
+    locumEmailDedupeKeys?: Set<string>,
 ) {
     if (result.summary) {
         summaries.push(result.summary);
@@ -226,12 +313,20 @@ export function handleProcessResult(
             mismatches.push(result.slotMismatch);
         }
         if (result.isLocum && result.emailData && result.workFirst) {
-            locumResults.push({
-                emailData: result.emailData,
-                isFirst: result.isFirst,
-                optomId: result.optomId,
-                workHistory: result.workHistory
-            });
+            const dedupeKey = locumEmailDedupeKey(result);
+            if (dedupeKey && locumEmailDedupeKeys?.has(dedupeKey)) {
+                logger.debug(
+                    `[LOCUM EMAIL] dedupe skip context=${context} key=${dedupeKey.slice(0, 80)}...`,
+                );
+            } else {
+                if (dedupeKey) locumEmailDedupeKeys?.add(dedupeKey);
+                locumResults.push({
+                    emailData: result.emailData,
+                    isFirst: result.isFirst,
+                    optomId: result.optomId,
+                    workHistory: result.workHistory
+                });
+            }
         } else {
             logLocumEmailSkip(result, context);
         }
@@ -367,15 +462,26 @@ export async function processLocumResults(
 ): Promise<void> {
     if (locumResults.length === 0) return;
 
+    const workSeen = new Set<string>();
+    const emailSeen = new Set<string>();
+
     const promises = locumResults.map(async (result) => {
         const tasks: Promise<unknown>[] = [];
 
         if (result.optomId && result.workHistory) {
-            tasks.push(addWorkHistory(result.optomId, result.workHistory));
+            const wk = `${result.optomId}|${result.workHistory}`;
+            if (!workSeen.has(wk)) {
+                workSeen.add(wk);
+                tasks.push(addWorkHistory(result.optomId, result.workHistory));
+            }
         }
 
         if (result.emailData) {
-            tasks.push(queueEmail(result.emailData, result.isFirst ?? false));
+            const ek = `${result.optomId}|${result.emailData.email}|${result.emailData.rosterDate}|${result.emailData.rosterStart}|${result.emailData.rosterEnd}|${result.emailData.storeName}`;
+            if (!emailSeen.has(ek)) {
+                emailSeen.add(ek);
+                tasks.push(queueEmail(result.emailData, result.isFirst ?? false));
+            }
         }
 
         await Promise.allSettled(tasks);
