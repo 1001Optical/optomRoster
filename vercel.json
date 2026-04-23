@@ -1,7 +1,7 @@
 {
   "crons": [{
     "path": "/api/roster/cleanup-past-data",
-    "schedule": "55 17 * * *"
+    "schedule": "55 */4 * * *"
   }, {
     "path": "/api/cron/email-retry",
     "schedule": "*/10 * * * *"
@@ -10,51 +10,51 @@
     "schedule": "0 * * * *"
   }, {
     "path": "/api/cron/store-sync?store=BKT",
-    "schedule": "0 18 * * *"
+    "schedule": "0 2,6,10,14,18,22 * * *"
   }, {
     "path": "/api/cron/store-sync?store=BON",
-    "schedule": "10 18 * * *"
+    "schedule": "10 2,6,10,14,18,22 * * *"
   }, {
     "path": "/api/cron/store-sync?store=BOH",
-    "schedule": "20 18 * * *"
+    "schedule": "20 2,6,10,14,18,22 * * *"
   }, {
     "path": "/api/cron/store-sync?store=BUR",
-    "schedule": "30 18 * * *"
+    "schedule": "30 2,6,10,14,18,22 * * *"
   }, {
     "path": "/api/cron/store-sync?store=CHW",
-    "schedule": "40 18 * * *"
+    "schedule": "40 2,6,10,14,18,22 * * *"
   }, {
     "path": "/api/cron/store-sync?store=DON",
-    "schedule": "50 18 * * *"
+    "schedule": "50 2,6,10,14,18,22 * * *"
   }, {
     "path": "/api/cron/store-sync?store=EMP",
-    "schedule": "0 19 * * *"
+    "schedule": "0 3,7,11,15,19,23 * * *"
   }, {
     "path": "/api/cron/store-sync?store=ETG",
-    "schedule": "10 19 * * *"
+    "schedule": "10 3,7,11,15,19,23 * * *"
   }, {
     "path": "/api/cron/store-sync?store=HOB",
-    "schedule": "20 19 * * *"
+    "schedule": "20 3,7,11,15,19,23 * * *"
   }, {
     "path": "/api/cron/store-sync?store=HUR",
-    "schedule": "30 19 * * *"
+    "schedule": "30 3,7,11,15,19,23 * * *"
   }, {
     "path": "/api/cron/store-sync?store=IND",
-    "schedule": "40 19 * * *"
+    "schedule": "40 3,7,11,15,19,23 * * *"
   }, {
     "path": "/api/cron/store-sync?store=MQU",
-    "schedule": "50 19 * * *"
+    "schedule": "50 3,7,11,15,19,23 * * *"
   }, {
     "path": "/api/cron/store-sync?store=PA1",
-    "schedule": "0 20 * * *"
+    "schedule": "0 0,4,8,12,16,20 * * *"
   }, {
     "path": "/api/cron/store-sync?store=PEN",
-    "schedule": "10 20 * * *"
+    "schedule": "10 0,4,8,12,16,20 * * *"
   }, {
     "path": "/api/cron/store-sync?store=TOP",
-    "schedule": "20 20 * * *"
+    "schedule": "20 0,4,8,12,16,20 * * *"
   }, {
     "path": "/api/cron/store-sync?store=CHC",
-    "schedule": "30 20 * * *"
+    "schedule": "30 0,4,8,12,16,20 * * *"
   }]
 }

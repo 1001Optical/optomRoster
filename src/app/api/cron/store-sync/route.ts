@@ -53,7 +53,13 @@ export async function GET(
       const fromDate = format(zonedNow, "yyyy-MM-dd");
       const toDate = format(addDays(zonedNow, 56), "yyyy-MM-dd");
 
-      logger.info(`Cron store sync starting`, { store, fromDate, toDate });
+      /** warn: 프로덕션 기본 LOG_LEVEL=warn 이라 Vercel 함수 로그에도 남음 (Axiom 미설정/지연 시에도 호출 여부 판별용) */
+      logger.warn(`Cron store sync starting`, {
+        store,
+        fromDate,
+        toDate,
+        invokedAtUtc: new Date().toISOString(),
+      });
 
       const result = await getEmploymentHeroList(
         fromDate,
