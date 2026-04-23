@@ -1,7 +1,7 @@
 {
   "crons": [{
     "path": "/api/roster/cleanup-past-data",
-    "schedule": "55 */4 * * *"
+    "schedule": "55 17 * * *"
   }, {
     "path": "/api/cron/email-retry",
     "schedule": "*/10 * * * *"
