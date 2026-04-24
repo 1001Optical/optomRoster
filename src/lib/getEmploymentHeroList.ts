@@ -11,6 +11,29 @@ import { createLogger, maskName } from "@/lib/logger";
 
 const logger = createLogger('EHList');
 
+/** EH 로스터 API 본문이 루트 배열이거나 흔한 `{ data: [...] }` 래핑일 때만 Shift 배열로 통일 */
+function normalizeEmploymentHeroRosterShifts(payload: unknown): Shift[] {
+    if (Array.isArray(payload)) {
+        return payload as Shift[];
+    }
+    if (payload && typeof payload === "object") {
+        const o = payload as Record<string, unknown>;
+        for (const key of ["data", "items", "results", "shifts"] as const) {
+            const v = o[key];
+            if (Array.isArray(v)) {
+                return v as Shift[];
+            }
+        }
+    }
+    const preview =
+        payload && typeof payload === "object"
+            ? JSON.stringify(payload).slice(0, 200)
+            : String(payload).slice(0, 200);
+    throw new Error(
+        `Employment Hero roster API returned a non-array body (expected shifts array or wrapped array). Preview: ${preview}`
+    );
+}
+
 export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null) => {
     try {
         const db = await getDB();
@@ -53,7 +76,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
             throw new Error(`Employment Hero API request failed: ${response.status} ${response.statusText}`);
         }
 
-        const result = await response.json();
+        const result = normalizeEmploymentHeroRosterShifts(await response.json());
 
         // 하이브리드 캐싱: 메모리 + DB
         const employeeMap = new Map();
@@ -152,7 +175,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
         logger.info(`All employee info processed`, { count: employeeMap.size });
 
         // 이제 모든 직원 정보가 준비되었으므로 변환 처리 (동일한 로직 유지)
-        const convertedData: (optomData | undefined)[] | [] = Array.isArray(result) ? result.map((shift: Shift, index: number): optomData | undefined => {
+        const convertedData: (optomData | undefined)[] = result.map((shift: Shift, index: number): optomData | undefined => {
             try {
                 // workTypeId가 472663인 경우 Optomate로 보내지 않도록 제외
                 if (shift.workTypeId === 472663 || shift.workTypeId === 536674) {
@@ -217,7 +240,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                 logger.error(`Error converting shift`, { index, shiftId: shift.id, error: String(conversionError) });
                 return undefined;
             }
-        }) : [];
+        });
 
         const filterData: optomData[] = convertedData.filter((v): v is optomData => v !== undefined)
 
