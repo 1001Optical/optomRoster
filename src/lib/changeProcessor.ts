@@ -110,24 +110,35 @@ export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promis
         }
     }
 
-    if(successIds.length > 0){
-        const placeholders = successIds.map(() => "?").join(',');
-        await dbExecute(db, `DELETE FROM CHANGE_LOG WHERE id IN (${placeholders})`, successIds);
-        logger.info(`Deleted processed change logs`, { count: successIds.length });
-    }
-
     if (appointmentConflicts.length > 0) {
         logger.info(`Keeping change logs with appointment conflicts`, { count: appointmentConflicts.length });
     }
 
     if (processedSummaries.length > 0) {
-        logger.info(`Processed summary`, { count: processedSummaries.length, items: processedSummaries.map(s => ({
-            name: maskName(s.name.split(' ')[0]) + ' ' + maskName(s.name.split(' ')[1] ?? ''),
-            optomId: s.optomId,
-            date: s.date,
-            start: s.start,
-            end: s.end
-        })) });
+        const summaryItems = processedSummaries.map((s) => {
+            const parts = (s.name ?? "").trim().split(/\s+/).filter(Boolean);
+            const displayName =
+                parts.length === 0
+                    ? "(unknown)"
+                    : parts.length === 1
+                      ? maskName(parts[0])
+                      : `${maskName(parts[0])} ${maskName(parts.slice(1).join(" "))}`;
+            return {
+                name: displayName,
+                optomId: s.optomId,
+                date: s.date,
+                start: s.start,
+                end: s.end,
+            };
+        });
+        logger.info(`Processed summary`, { count: processedSummaries.length, items: summaryItems });
+    }
+
+    // DELETE는 로깅 등 이후 작업이 끝난 뒤에만 실행 (중간 예외 시 CHANGE_LOG 누락 방지)
+    if (successIds.length > 0) {
+        const placeholders = successIds.map(() => "?").join(",");
+        await dbExecute(db, `DELETE FROM CHANGE_LOG WHERE id IN (${placeholders})`, successIds);
+        logger.info(`Deleted processed change logs`, { count: successIds.length });
     }
 
     return { slotMismatches, appointmentConflicts };
