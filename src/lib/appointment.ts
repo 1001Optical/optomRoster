@@ -1,5 +1,7 @@
 import {apiFetch} from "@/services/apiFetch";
+import { createLogger } from "@/lib/logger";
 
+const logger = createLogger('Appointment');
 const apiUrl = process.env.API_BASE_URL;
 const API_TOKEN = process.env.API_TOKENS
 
@@ -20,6 +22,8 @@ interface IAdjustSwapData {
 
 export const PostAppAdjust = async (id: number | string, adjust_data: IAdjustData) => {
     const url = `${apiUrl}/api/appointments/appAdjust`;
+
+    logger.info(`PostAppAdjust`, { id, adjust_data });
 
     try {
         const result = await apiFetch(url, {
@@ -62,6 +66,8 @@ export const PostAppAdjustSwapOptom = async (
         if (new_adjust_data !== undefined) {
             body.new_adjust_data = new_adjust_data;
         }
+
+        logger.info(`PostAppAdjustSwapOptom`, { body });
 
         const result = await apiFetch(url, {
             method: "POST",

@@ -9,7 +9,7 @@ import {createOptomAccount} from "@/lib/createOptomAccount";
 import {calculateSlots} from "@/utils/slots";
 import type { Client } from "@libsql/client";
 import {PostAppAdjust, PostAppAdjustSwapOptom} from "@/lib/appointment";
-import { createLogger, maskName } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 import type { SlotMismatch, AppointmentConflict } from "@/lib/changeProcessor";
 import type { OptomContext } from "@/lib/slotService";
 
@@ -65,7 +65,7 @@ async function resolveAccountForOptom(optomData: optomData): Promise<{
             return r ? { id: r.id, workHistory: r.workHistory ?? [] } : null;
         } catch (searchError) {
             logger.warn(`Search failed, will attempt to create account`, {
-                name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`,
+                name: `${optomData.firstName} ${optomData.lastName}`,
                 error: String(searchError),
             });
             return null;
@@ -94,7 +94,7 @@ async function resolveAccountForOptom(optomData: optomData): Promise<{
                 }
 
                 logger.info(`Creating new account`, {
-                    name: `${maskName(optomData.firstName)} ${maskName(optomData.lastName)}`,
+                    name: `${optomData.firstName} ${optomData.lastName}`,
                     externalId: extId,
                 });
                 const info = await createOptomAccount(
@@ -167,19 +167,19 @@ export function logLocumEmailSkip(
         : result.workFirst === false
             ? "workFirst-false"
             : "unknown";
-    logger.debug(
-        `[LOCUM EMAIL] skip context=${context}` +
-        ` reason=${reason}` +
-        ` optomId=${result.optomId ?? "-"}` +
-        ` date=${result.summary?.date ?? "-"}` +
-        ` workFirst=${result.workFirst ?? "-"}` +
-        ` hasEmailData=${!!result.emailData}`
-    );
+    logger.info(`Locum email skipped`, {
+        context,
+        reason,
+        optomId: result.optomId ?? null,
+        name: result.summary?.name ?? null,
+        date: result.summary?.date ?? null,
+        workFirst: result.workFirst ?? null,
+        hasEmailData: !!result.emailData,
+    });
 }
 
 export async function resolveOptomContext(optomData: optomData): Promise<OptomContext> {
     const account = await resolveAccountForOptom(optomData);
-    logger.debug(`Resolved optomId`, { optomId: account.id });
 
     if (!optomData.startTime || !optomData.endTime) {
         throw new Error("Missing startTime or endTime");
@@ -201,6 +201,21 @@ export async function resolveOptomContext(optomData: optomData): Promise<OptomCo
     const endDate = new Date(optomData.endTime);
     const workMinutes = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60));
     const employmentHeroSlots = workMinutes > 0 ? calculateSlots(workMinutes) : 0;
+
+    logger.info(`Resolved optom context`, {
+        optomId: account.id,
+        name: `${optomData.firstName} ${optomData.lastName}`,
+        employeeId: optomData.employeeId,
+        branch: branchInfo.StoreName,
+        optCode: branchInfo.OptCode,
+        date,
+        start: formatHm(start),
+        end: formatHm(optomData.endTime.split("T")[1]),
+        isFirst: account.isFirst,
+        isLocum: optomData.isLocum,
+        workFirst,
+        workHistory: account.workHistory,
+    });
 
     return {
         optomId: account.id,
@@ -268,7 +283,27 @@ export async function finalizeOptomAdjust(
                 optomateId: context.username,
                 optomatePw: context.username ? '1001' : undefined,
             };
+            logger.info(`Email data prepared`, {
+                optomId: context.optomId,
+                name: `${optomData.firstName} ${optomData.lastName}`,
+                email: optomData.email ?? null,
+                branch: context.branchInfo.StoreName,
+                date: context.date,
+                isFirst: context.isFirst,
+            });
+        } else {
+            logger.info(`Skipped email: not workFirst`, {
+                optomId: context.optomId,
+                name: `${optomData.firstName} ${optomData.lastName}`,
+                branch: context.branchInfo.OptCode,
+            });
         }
+    } else if (key !== "deleted" && !optomData.isLocum) {
+        logger.debug(`Skipped email: not locum`, {
+            optomId: context.optomId,
+            name: `${optomData.firstName} ${optomData.lastName}`,
+            isLocum: optomData.isLocum,
+        });
     }
 
     const summary: ProcessedSummary = {
@@ -323,13 +358,23 @@ export function handleProcessResult(
         if (result.isLocum && result.emailData && result.workFirst) {
             const dedupeKey = locumEmailDedupeKey(result);
             if (dedupeKey && locumEmailDedupeKeys?.has(dedupeKey)) {
-                logger.info(`Locum email deduped (skipped duplicate queue)`, {
+                logger.info(`Locum email deduped`, {
                     context,
+                    optomId: result.optomId,
+                    name: result.summary.name ?? '-',
                     rosterDate: result.emailData.rosterDate,
                     storeName: result.emailData.storeName,
                 });
             } else {
                 if (dedupeKey) locumEmailDedupeKeys?.add(dedupeKey);
+                logger.info(`Locum email queued to locumResults`, {
+                    context,
+                    optomId: result.optomId,
+                    name: result.summary.name ?? '-',
+                    branch: result.workHistory,
+                    date: result.summary.date,
+                    isFirst: result.isFirst,
+                });
                 locumResults.push({
                     emailData: result.emailData,
                     isFirst: result.isFirst,
@@ -340,6 +385,8 @@ export function handleProcessResult(
         } else {
             logLocumEmailSkip(result, context);
         }
+    } else {
+        logger.warn(`handleProcessResult: no summary`, { context, optomId: result.optomId });
     }
     if (result.appointmentConflict) {
         conflicts.push(result.appointmentConflict);
@@ -374,9 +421,13 @@ export async function processOptomSwap(
 
     logger.info(`Using swapOptom`, {
         oldOptomId: oldContext.optomId,
+        oldName: `${oldData.firstName} ${oldData.lastName}`,
+        oldTime: `${oldContext.adjustStart}-${oldContext.adjustFinish}`,
         newOptomId: newContext.optomId,
+        newName: `${newData.firstName} ${newData.lastName}`,
+        newTime: `${newContext.adjustStart}-${newContext.adjustFinish}`,
         branch: oldContext.branchInfo.StoreName,
-        date: oldContext.date
+        date: oldContext.date,
     });
 
     const swapResponse = await PostAppAdjustSwapOptom(
@@ -387,6 +438,7 @@ export async function processOptomSwap(
     );
 
     const swapSuccess = swapResponse.ok === true;
+    logger.info(`swapOptom result`, { success: swapSuccess, oldOptomId: oldContext.optomId, newOptomId: newContext.optomId });
     if (!swapSuccess) {
         const err = swapResponse.error instanceof Error ? swapResponse.error.message : String(swapResponse.error);
         logger.warn(`APP_ADJUST swapOptom failed but continuing`, { error: err });
@@ -422,12 +474,16 @@ export async function processSwapWithoutNew(
 
     logger.info(`Using swapOptom without new data`, {
         optomId: context.optomId,
+        name: `${oldData.firstName} ${oldData.lastName}`,
+        employeeId: oldData.employeeId,
         branch: context.branchInfo.StoreName,
-        date: context.date
+        date: context.date,
+        time: `${context.adjustStart}-${context.adjustFinish}`,
     });
 
     const swapResponse = await PostAppAdjustSwapOptom(context.optomId, adjust);
     const swapSuccess = swapResponse.ok === true;
+    logger.info(`swapOptom (without new) result`, { success: swapSuccess, optomId: context.optomId });
     if (!swapSuccess) {
         const err = swapResponse.error instanceof Error ? swapResponse.error.message : String(swapResponse.error);
         logger.warn(`APP_ADJUST swapOptom failed but continuing`, { error: err });
@@ -451,11 +507,18 @@ export async function processOptomData(
     const context = await resolveOptomContext(optomData);
     const appAdjust = buildAppAdjust(context, true, key !== "new");
 
-    if (key === "deleted") {
-        logger.info(`Setting AppAdjust INACTIVE for deleted roster`, { optomId: context.optomId, branch: context.branchInfo.StoreName, date: context.date });
-    } else if (key === "old") {
-        logger.info(`Setting AppAdjust INACTIVE for changed roster (old)`, { optomId: context.optomId, branch: context.branchInfo.StoreName, date: context.date });
-    }
+    logger.info(`processOptomData`, {
+        key,
+        optomId: context.optomId,
+        name: `${optomData.firstName} ${optomData.lastName}`,
+        employeeId: optomData.employeeId,
+        branch: context.branchInfo.StoreName,
+        date: context.date,
+        time: `${context.adjustStart}-${context.adjustFinish}`,
+        isLocum: optomData.isLocum,
+        workFirst: context.workFirst,
+        inactive: key !== "new",
+    });
 
     return await finalizeOptomAdjust(
         context,

@@ -2,7 +2,7 @@ import {dbAll, dbExecute, getDB} from "@/utils/db/db";
 import {ChangeLog, optomData} from "@/types/types";
 import type { PostEmailData } from "@/lib/postEmail";
 import {chunk} from "@/lib/utils";
-import { createLogger, maskName } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 import {
     processOptomData,
     processOptomSwap,
@@ -115,22 +115,13 @@ export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promis
     }
 
     if (processedSummaries.length > 0) {
-        const summaryItems = processedSummaries.map((s) => {
-            const parts = (s.name ?? "").trim().split(/\s+/).filter(Boolean);
-            const displayName =
-                parts.length === 0
-                    ? "(unknown)"
-                    : parts.length === 1
-                      ? maskName(parts[0])
-                      : `${maskName(parts[0])} ${maskName(parts.slice(1).join(" "))}`;
-            return {
-                name: displayName,
-                optomId: s.optomId,
-                date: s.date,
-                start: s.start,
-                end: s.end,
-            };
-        });
+        const summaryItems = processedSummaries.map((s) => ({
+            name: (s.name ?? "").trim() || "(unknown)",
+            optomId: s.optomId,
+            date: s.date,
+            start: s.start,
+            end: s.end,
+        }));
         logger.info(`Processed summary`, { count: processedSummaries.length, items: summaryItems });
     }
 
@@ -145,7 +136,28 @@ export async function sendChangeToOptomateAPI(locationFilter?: number[]): Promis
 }
 
 async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomData, new?: optomData}, locumEmailDedupeKeys: Set<string>): Promise<{summaries: ProcessedSummary[], mismatches: SlotMismatch[], conflicts: AppointmentConflict[]}> {
-    logger.info(`Processing change log`, { changeType: changeLog.changeType, rosterId: changeLog.rosterId });
+    logger.info(`Processing change log`, {
+        changeType: changeLog.changeType,
+        rosterId: changeLog.rosterId,
+        old: diffSummary?.old ? {
+            employeeId: diffSummary.old.employeeId,
+            name: `${diffSummary.old.firstName ?? ''} ${diffSummary.old.lastName ?? ''}`.trim(),
+            locationId: diffSummary.old.locationId,
+            locationName: diffSummary.old.locationName,
+            startTime: diffSummary.old.startTime,
+            endTime: diffSummary.old.endTime,
+            isLocum: diffSummary.old.isLocum,
+        } : null,
+        new: diffSummary?.new ? {
+            employeeId: diffSummary.new.employeeId,
+            name: `${diffSummary.new.firstName ?? ''} ${diffSummary.new.lastName ?? ''}`.trim(),
+            locationId: diffSummary.new.locationId,
+            locationName: diffSummary.new.locationName,
+            startTime: diffSummary.new.startTime,
+            endTime: diffSummary.new.endTime,
+            isLocum: diffSummary.new.isLocum,
+        } : null,
+    });
 
     if(!diffSummary) {
         return { summaries: [], mismatches: [], conflicts: [] };
@@ -160,7 +172,13 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
 
     if (changeLog.changeType === 'roster_deleted') {
         if (diffSummary.old && diffSummary.old.firstName && diffSummary.old.lastName && diffSummary.old.employeeId) {
-            logger.info(`Processing deleted roster`, { name: `${maskName(diffSummary.old.firstName)} ${maskName(diffSummary.old.lastName)}` });
+            logger.info(`Processing deleted roster`, {
+                rosterId: changeLog.rosterId,
+                employeeId: diffSummary.old.employeeId,
+                name: `${diffSummary.old.firstName} ${diffSummary.old.lastName}`,
+                locationName: diffSummary.old.locationName,
+                date: diffSummary.old.startTime?.split("T")[0],
+            });
             try {
                 const result = await processOptomData(diffSummary.old, db, "deleted");
                 if (result.summary) {
@@ -172,12 +190,26 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
             } catch (error) {
                 logger.error(`Failed to process deleted roster`, { error: String(error) });
             }
+        } else {
+            logger.warn(`Skipped roster_deleted: missing required fields`, {
+                rosterId: changeLog.rosterId,
+                hasOld: !!diffSummary.old,
+                firstName: diffSummary.old?.firstName ?? null,
+                lastName: diffSummary.old?.lastName ?? null,
+                employeeId: diffSummary.old?.employeeId ?? null,
+            });
         }
     } else if (changeLog.changeType === 'roster_changed') {
         if (diffSummary.old && diffSummary.new && isSwapOptomChange(diffSummary)) {
             logger.info(`Processing swap roster`, {
-                oldName: `${maskName(diffSummary.old.firstName)} ${maskName(diffSummary.old.lastName)}`,
-                newName: `${maskName(diffSummary.new.firstName)} ${maskName(diffSummary.new.lastName)}`
+                rosterId: changeLog.rosterId,
+                oldEmployeeId: diffSummary.old.employeeId,
+                oldName: `${diffSummary.old.firstName} ${diffSummary.old.lastName}`,
+                newEmployeeId: diffSummary.new.employeeId,
+                newName: `${diffSummary.new.firstName} ${diffSummary.new.lastName}`,
+                locationId: diffSummary.old.locationId,
+                locationName: diffSummary.old.locationName,
+                date: diffSummary.old.startTime?.split("T")[0],
             });
             try {
                 const swapResults = await processOptomSwap(diffSummary.old, diffSummary.new, db);
@@ -237,6 +269,14 @@ async function callOptomateAPI(changeLog: ChangeLog, diffSummary: {old?: optomDa
             } catch (error) {
                 logger.error(`Failed to process inserted roster`, { error: String(error) });
             }
+        } else {
+            logger.warn(`Skipped roster_inserted: missing required fields`, {
+                rosterId: changeLog.rosterId,
+                hasNew: !!diffSummary.new,
+                firstName: diffSummary.new?.firstName ?? null,
+                lastName: diffSummary.new?.lastName ?? null,
+                employeeId: diffSummary.new?.employeeId ?? null,
+            });
         }
     }
 
