@@ -1,7 +1,7 @@
 import {optomData} from "@/types/types";
 import type { Client, InArgs } from "@libsql/client";
 import {dbAll, dbExecute, getDB} from "@/utils/db/db";
-import { createLogger, maskName } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 
 const logger = createLogger('SyncRoster');
 
@@ -376,7 +376,7 @@ export async function syncRoster(db: Client, incoming: optomData[], scope: { sta
                             id: r.id,
                             startTime: r.startTime,
                             locationId: r.locationId,
-                            name: `${maskName(r.firstName ?? '')} ${maskName(r.lastName ?? '')}`
+                            name: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim()
                         }))
                     });
                 }

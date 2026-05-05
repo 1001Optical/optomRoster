@@ -46,9 +46,7 @@ process_store() {
     
     echo "[$timestamp] [$store_num/$total_stores] Starting store: $store"
     
-    # Call refresh API with branch parameter, scheduler flag, and skipEmail flag
-    # skipEmail=true: 각 스토어 처리 시 메일을 보내지 않고, 모든 스토어 처리 완료 후 한 번에 보냄
-    response=$(curl -s -w "\n%{http_code}" "$api_url/api/roster/refresh?from=$start_date&to=$end_date&branch=$store&scheduler=true&skipEmail=true")
+    response=$(curl -s -w "\n%{http_code}" "$api_url/api/roster/refresh?from=$start_date&to=$end_date&branch=$store&scheduler=true")
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
     

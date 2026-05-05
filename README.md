@@ -149,7 +149,6 @@ On every INSERT, UPDATE, or DELETE on the `ROSTER` table, SQLite triggers automa
 | `state` | Filter by state (NSW, VIC, QLD) |
 | `scheduler` | `true` allows extended date ranges |
 | `manual` | `true` applies range limits |
-| `skipEmail` | `true` skips email notifications |
 
 ## Environment Variables
 

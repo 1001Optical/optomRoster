@@ -1,4 +1,4 @@
-import { createLogger, maskEmail, maskName } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 import { fetch1001OptometristApi } from "@/services/apiFetch";
 
 const logger = createLogger('CreateOptomAccount');
@@ -20,14 +20,14 @@ const removeSpecialChars = (str: string): string => {
 }
 
 export const createOptomAccount = async (id: string, firstName: string, lastName: string, email: string) => {
-    logger.info(`Creating Optomate Account`, { name: `${maskName(firstName)} ${maskName(lastName)}`, email: maskEmail(email) });
+    logger.info(`Creating Optomate Account`, { name: `${firstName} ${lastName}`, email });
 
     try {
         // 특수문자 제거
         const givenName = removeSpecialChars(firstName);
         const surname = removeSpecialChars(lastName);
 
-        logger.debug(`Cleaned name`, { given: maskName(givenName), surname: maskName(surname) });
+        logger.debug(`Cleaned name`, { given: givenName, surname: surname });
 
         // 특수문자 제거 후 빈 문자열 체크
         if (!givenName || !surname) {

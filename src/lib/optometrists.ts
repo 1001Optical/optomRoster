@@ -1,5 +1,5 @@
 import { apiFetch, fetch1001OptometristApi } from "@/services/apiFetch";
-import { createLogger, maskEmail, maskName } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 
 const logger = createLogger('Optometrists');
 const API_TOKEN = process.env.API_TOKENS
@@ -36,11 +36,11 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
     const cacheKey = externalId
         ? `ext:${externalId}`
         : `${safeFirstName}_${safeLastName}_${email ?? ""}`;
-    logger.info(`Searching Optomate ID`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}` });
+    logger.info(`Searching Optomate ID`, { name: `${safeFirstName} ${safeLastName}` });
 
     const cached = optomCache.get(cacheKey);
     if (cached && !isExpired(cached)) {
-        logger.debug(`Cache hit for optom ID`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}` });
+        logger.debug(`Cache hit for optom ID`, { name: `${safeFirstName} ${safeLastName}` });
         return { id: cached.id, workHistory: cached.workHistory };
     } else if (cached && isExpired(cached)) {
         optomCache.delete(cacheKey);
@@ -52,9 +52,9 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             if (!apiUrl) {
                 throw new Error("API_BASE_URL environment variable is not set");
             }
-            const maskedPayload = {
+            const logPayload = {
                 externalUserId: payload.externalUserId,
-                email: payload.email ? maskEmail(payload.email) : undefined
+                email: payload.email ?? undefined
             };
             const response = await apiFetch(`${apiUrl}/api/optometrist/${optomId}`, {
                 method: "PATCH",
@@ -68,9 +68,9 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
                 })
             });
             if (!response.success) {
-                logger.warn(`Failed to update optometrist`, { optomId, payload: maskedPayload });
+                logger.warn(`Failed to update optometrist`, { optomId, payload: logPayload });
             } else {
-                logger.debug(`Updated optometrist`, { optomId, payload: maskedPayload });
+                logger.debug(`Updated optometrist`, { optomId, payload: logPayload });
             }
         } catch (err) {
             logger.warn(`Error updating optometrist`, { optomId, error: String(err) });
@@ -124,7 +124,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
             lastName: safeLastName || null
         })
 
-        logger.debug(`Searching`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, email: maskEmail(email ?? "none"), externalId: externalId });
+        logger.debug(`Searching`, { name: `${safeFirstName} ${safeLastName}`, email: email ?? "none", externalId: externalId });
 
         if (result?.success && result.data?.optomId) {
             return setAndReturn(result.data);
@@ -132,7 +132,7 @@ export const searchOptomId: SearchOptomIdType = async (firstName, lastName, emai
 
         return undefined;
     } catch (error) {
-        logger.error(`Error searching optometrist ID`, { name: `${maskName(safeFirstName)} ${maskName(safeLastName)}`, error: String(error) });
+        logger.error(`Error searching optometrist ID`, { name: `${safeFirstName} ${safeLastName}`, error: String(error) });
         throw error;
     }
 }

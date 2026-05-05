@@ -16,8 +16,6 @@ const logger = createLogger('ConflictEmail');
 export async function GET(request: Request): Promise<NextResponse<I1001Response<{ conflictsCount: number }>>> {
     return withAxiomFlush(async () => {
     try {
-        // sendChangeToOptomateAPI를 호출하여 모든 충돌 정보를 가져옴
-        // skipEmail=true로 설정하여 메일을 보내지 않고 충돌 정보만 수집
         const { appointmentConflicts } = await sendChangeToOptomateAPI();
 
         if (appointmentConflicts.length === 0) {

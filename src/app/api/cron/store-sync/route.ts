@@ -66,7 +66,6 @@ export async function GET(
         toDate,
         store,
         true,
-        true,
         null,
       );
 

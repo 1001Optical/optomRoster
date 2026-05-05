@@ -7,7 +7,7 @@ import {OptomMap} from "@/data/stores";
 import {getEmployeeInfo} from "@/lib/getEmployeeInfo";
 import {sendChangeToOptomateAPI, SlotMismatch, AppointmentConflict} from "@/lib/changeProcessor";
 import {chunk} from "@/lib/utils";
-import { createLogger, maskName } from "@/lib/logger";
+import { createLogger } from "@/lib/logger";
 
 const logger = createLogger('EHList');
 
@@ -34,7 +34,7 @@ function normalizeEmploymentHeroRosterShifts(payload: unknown): Shift[] {
     );
 }
 
-export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, skipEmail?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, skipEmail = false, state = null) => {
+export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: string | null, isScheduler?: boolean, state?: string | null) => Promise<{data: optomData[], slotMismatches: SlotMismatch[], appointmentConflicts: AppointmentConflict[]}> = async (fromDate, toDate, branch, isScheduler = false, state = null) => {
     try {
         const db = await getDB();
 
@@ -205,7 +205,7 @@ export const getEmploymentHeroList: (fromDate: string, toDate: string, branch?: 
                             firstName = nameParts[0];
                             lastName = nameParts.slice(1).join(' ');
                             email = ""; // 이메일은 없음
-                            logger.debug(`Parsed name from shift`, { name: `${maskName(firstName)} ${maskName(lastName)}` });
+                            logger.debug(`Parsed name from shift`, { name: `${firstName} ${lastName}` });
                         } else {
                             logger.error(`Cannot parse employee name`, { employeeId: shift.employeeId });
                             return undefined;
